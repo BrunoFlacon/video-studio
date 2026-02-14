@@ -1,0 +1,10 @@
+version: '3'
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      ENABLE_BILLING: "false"
+      ENABLE_MULTI_TENANT: "false"
+      ENABLE_LIMITS: "false"

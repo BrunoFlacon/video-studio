@@ -1,0 +1,524 @@
+/* ==================== MODALS & DIALOGS ==================== */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+.modal-content {
+    background: var(--bg-panel);
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 520px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-content h3 {
+    margin: 0 0 24px 0;
+    font-size: 1.3rem;
+    color: var(--text);
+}
+
+
+/* Form Groups */
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.modal-input,
+.modal-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.modal-input:focus,
+.modal-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+
+/* Modal Actions */
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+}
+
+.btn-secondary,
+.btn-primary {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary {
+    background: var(--bg-dark);
+    color: var(--text);
+}
+
+.btn-secondary:hover {
+    background: #27272a;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+
+/* ==================== RECENT PROJECTS MODAL ==================== */
+
+.recent-projects-list {
+    max-height: 400px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+}
+
+.recent-project-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.recent-project-item:hover {
+    background: #27272a;
+    border-color: var(--primary);
+    transform: translateX(4px);
+}
+
+.project-info {
+    flex: 1;
+}
+
+.project-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.project-clips::before {
+    content: '📁 ';
+}
+
+.project-date::before {
+    content: '🕒 ';
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s;
+    border-radius: 4px;
+}
+
+.btn-icon:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.project-delete svg {
+    display: block;
+}
+
+
+/* ==================== TOAST NOTIFICATIONS ==================== */
+
+.toast {
+    position: fixed;
+    bottom: -100px;
+    right: 24px;
+    background: var(--bg-panel);
+    padding: 14px 20px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 280px;
+    max-width: 400px;
+    border-left: 4px solid var(--primary);
+    transition: bottom 0.3s ease;
+}
+
+.toast-show {
+    bottom: 24px;
+}
+
+.toast-icon {
+    font-size: 1.2rem;
+}
+
+.toast-message {
+    flex: 1;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.toast-success {
+    border-left-color: #10b981;
+}
+
+.toast-error {
+    border-left-color: #ef4444;
+}
+
+.toast-warning {
+    border-left-color: #f59e0b;
+}
+
+.toast-info {
+    border-left-color: #3b82f6;
+}
+
+
+/* ==================== SCROLLBAR STYLING ==================== */
+
+.recent-projects-list::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.recent-projects-list::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+    border-radius: 4px;
+}
+
+.recent-projects-list::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+}
+
+.recent-projects-list::-webkit-scrollbar-thumb:hover,
+.modal-content::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+}
+
+
+/* ==================== EXPORT PROGRESS & STAGES ==================== */
+
+.section-desc {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 24px;
+    line-height: 1.4;
+}
+
+.modal-actions-full {
+    margin-top: 32px;
+}
+
+.btn-full {
+    width: 100%;
+    justify-content: center;
+    padding: 14px !important;
+    font-size: 1rem !important;
+}
+
+.render-animation {
+    font-size: 3rem;
+    text-align: center;
+    margin-bottom: 20px;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.progress-stats {
+    display: flex;
+    justify-content: center;
+    margin-top: 8px;
+    font-weight: bold;
+    color: var(--primary);
+}
+
+.success-icon {
+    font-size: 4rem;
+    text-align: center;
+    margin-bottom: 24px;
+    color: #10b981;
+}
+
+#exportResultText {
+    text-align: center;
+    font-size: 1.1rem;
+    margin-bottom: 32px;
+}
+
+#exportProgressContainer {
+    margin: 20px 0;
+}
+
+.progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6, #10b981);
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+    transition: width 0.3s ease;
+}
+
+#exportStatusText {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* export-modal.css - Professional Export UI (Adobe Style) */
+
+.modal-title-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+}
+
+/* 2. PROGRESS VIEW (RENDER PANELS) */
+.render-preview-container {
+    width: 100%;
+    background: #000;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 16/9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.render-preview-image {
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.render-overlay-play {
+    font-size: 2rem;
+    opacity: 0.5;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.render-info-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    padding: 10px 15px;
+    color: white;
+}
+
+#renderInfoText {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* STATS PANEL */
+.render-stats-panel {
+    background: var(--bg-sidebar);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid var(--border);
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.stat-row:last-child {
+    margin-bottom: 0;
+}
+
+.stat-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.stat-value {
+    color: #fff;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.status-main-text {
+    text-align: center;
+    margin: 10px 0;
+    font-weight: 500;
+    color: var(--primary);
+}
+
+/* DETAILS LIST */
+.render-details-list {
+    margin-bottom: 25px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid var(--primary);
+}
+
+.render-details-list div {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+/* SUCCESS HEADER */
+.success-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.success-icon-bg {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 15px;
+    border: 2px solid #10b981;
+}
+
+.success-icon {
+    font-size: 40px;
+}
+
+.btn-success-action {
+    height: 54px;
+    font-size: 1.1rem !important;
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+}
+
+
+/* === PREFLIGHT EXPORT INFO === */
+.preflight-info {
+    margin: 15px 0;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 6px;
+    border-left: 4px solid #3b82f6;
+    font-size: 0.85rem;
+    color: #e5e7eb;
+}
+
+#renderEstSize {
+    display: block;
+    font-weight: 600;
+    color: #ffffff;
+}

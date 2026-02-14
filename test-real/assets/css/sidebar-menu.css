@@ -1,0 +1,138 @@
+/* --- SIDEBAR MENU (Click-based Collapsible Sections) --- */
+
+.sidebar-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.menu-section {
+    border-bottom: 1px solid #27272a;
+}
+
+.menu-section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.menu-section-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+
+/* PROJECT HEADER */
+
+.project-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.project-name {
+    flex: 1;
+    border: none;
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    outline: none;
+}
+
+
+/* SECTION TOGGLES */
+
+.menu-title {
+    flex: 1;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #e4e4e7;
+}
+
+.menu-section-content {
+    max-height: 500px;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+}
+
+.menu-section.collapsed > .menu-section-content {
+    max-height: 0;
+}
+
+
+/* MENU BUTTONS */
+
+.menu-btn {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    color: #d4d4d8;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-align: left;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.menu-btn:hover {
+    background: #18181b;
+    border-left-color: var(--primary);
+}
+
+.menu-btn span:first-child {
+    flex-grow: 1;
+}
+
+.menu-btn-special {
+    background: #18181b;
+    margin: 4px 8px 8px 8px;
+    border-radius: 6px;
+    border-left: none !important;
+    padding: 12px;
+    justify-content: center;
+}
+
+.menu-btn-special:hover {
+    background: #27272a;
+}
+
+.shortcut {
+    font-size: 0.7rem;
+    color: #71717a;
+    background: #0a0a0b;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid #27272a;
+    font-family: 'Courier New', monospace;
+}
+
+
+/* SUBMENU INDICATORS */
+
+.menu-btn.has-submenu {
+    position: relative;
+}
+
+.submenu-arrow {
+    font-size: 0.7rem;
+    color: #71717a;
+    transition: transform 0.2s;
+    margin-left: 8px;
+}
+
+.menu-btn.has-submenu:hover .submenu-arrow {
+    color: #a1a1aa;
+    transform: translateX(2px);
+}

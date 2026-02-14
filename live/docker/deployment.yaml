@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videostudio
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: videostudio
+  template:
+    metadata:
+      labels:
+        app: videostudio
+    spec:
+      containers:
+      - name: app
+        image: videostudio:latest
+        ports:
+        - containerPort: 8000

@@ -1,0 +1,8 @@
+{
+  "name": "Example Plugin",
+  "slug": "example-plugin",
+  "version": "1.0.0",
+  "author": "Dev",
+  "description": "Plugin de exemplo",
+  "hooks": ["render", "timeline"]
+}

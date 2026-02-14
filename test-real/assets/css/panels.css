@@ -1,0 +1,336 @@
+/* ==================== LOWER THIRD STYLES ==================== */
+
+.lower-third {
+    position: absolute;
+    padding: 20px 30px;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    max-width: 500px;
+}
+
+.position-bottom-left {
+    bottom: 60px;
+    left: 40px;
+}
+
+.position-bottom-right {
+    bottom: 60px;
+    right: 40px;
+}
+
+.position-top-left {
+    top: 60px;
+    left: 40px;
+}
+
+.position-top-right {
+    top: 60px;
+    right: 40px;
+}
+
+.lower-third-content {
+    position: relative;
+}
+
+.lower-third-name {
+    font-weight: 700;
+    margin-bottom: 4px;
+    line-height: 1.2;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.lower-third-subtitle {
+    opacity: 0.95;
+    line-height: 1.3;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.lower-third:hover {
+    cursor: pointer;
+    transform: scale(1.02);
+    transition: transform 0.2s ease;
+}
+
+/* Animations */
+@keyframes slideInLeft {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideInBottom {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* ==================== SIDE PANELS ==================== */
+
+.side-panel {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 340px;
+    background: var(--bg-panel);
+    border-left: 1px solid var(--border);
+    z-index: 1000;
+    overflow-y: auto;
+    animation: slideInRight 0.3s ease;
+    box-shadow: -4px 0 12px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+    }
+
+    to {
+        transform: translateX(0);
+    }
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-dark);
+}
+
+.panel-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.panel-header h4 svg {
+    color: var(--primary);
+}
+
+.btn-close {
+    background: transparent;
+    border: none;
+    padding: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: all 0.2s;
+    border-radius: 4px;
+}
+
+.btn-close:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+}
+
+.panel-content {
+    padding: 20px;
+}
+
+.panel-input,
+.panel-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.panel-input:focus,
+.panel-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.btn-full {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+}
+
+/* ==================== EFFECTS PANEL ==================== */
+
+.effects-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-dark);
+}
+
+.effects-tabs .tab {
+    flex: 1;
+    padding: 10px 16px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.effects-tabs .tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--primary);
+}
+
+.effects-tabs .tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.effects-content {
+    padding: 20px;
+}
+
+.effects-list {
+    display: none;
+}
+
+.effects-list.active {
+    display: block;
+}
+
+.effect-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+}
+
+.effect-item:hover {
+    background: #27272a;
+    border-color: var(--primary);
+}
+
+.effect-icon {
+    font-size: 1.4rem;
+    width: 32px;
+    text-align: center;
+}
+
+.effect-name {
+    flex: 1;
+    color: var(--text);
+    font-size: 0.95rem;
+}
+
+.btn-apply {
+    padding: 6px 14px;
+    background: var(--primary);
+    border: none;
+    border-radius: 4px;
+    color: white;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-apply:hover {
+    background: var(--primary-dark);
+}
+
+/* ==================== HISTORY PANEL ==================== */
+
+.history-list {
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.history-item:hover {
+    background: #27272a;
+    border-color: var(--primary);
+}
+
+.history-item.active {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--primary);
+}
+
+.history-icon {
+    font-size: 1.2rem;
+    width: 28px;
+    text-align: center;
+}
+
+.history-info {
+    flex: 1;
+}
+
+.history-action {
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+}
+
+.history-time {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
