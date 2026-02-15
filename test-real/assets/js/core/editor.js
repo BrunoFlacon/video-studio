@@ -130,6 +130,9 @@ async function init() {
         history.addAction('init', 'Estado Inicial');
     }
 
+    // Inicializa o Audio Pool (APENAS UMA VEZ)
+    initAudioPool();
+
     setupEventListeners();
 
     // Cinema Mode Toggle
@@ -443,7 +446,7 @@ function setupEventListeners() {
                 import('./modules/uploader.js').then(async (m) => {
                     const uploadResult = await m.uploadMedia(file);
                     if (uploadResult && uploadResult.filename) {
-                        const serverUrl = `assets/uploads/${uploadResult.filename}`;
+                        const serverUrl = `uploads/${uploadResult.filename}`;
                         // Procura no state e atualiza todos os clips que usam este blob local
                         state.clips.forEach(c => {
                             if (c.src === localUrl) {
@@ -690,7 +693,7 @@ function setupEventListeners() {
                     const serverFilename = await m.uploadMedia(file);
 
                     if (serverFilename) {
-                        const serverUrl = `assets/uploads/${serverFilename}`;
+                        const serverUrl = `uploads/${serverFilename}`;
                         itemsToProcess.push({
                             url: localUrl, // Local para browser
                             serverUrl: serverUrl, // Servidor para FFmpeg
@@ -1176,12 +1179,17 @@ if (btnApplyReplace && inputSearch && inputReplace) {
 
 // --- CONTROLE DE PLAYBACK CENTRALIZADO (MASTER CLOCK + AUTO-SCROLL) ---
 function togglePlayback() {
+    // Garante que o AudioContext esteja ativo ao dar Play
+    if (window.audioCtx && window.audioCtx.state === 'suspended') {
+        window.audioCtx.resume();
+    }
+
     isPlayingGlobal = !isPlayingGlobal;
     if (isPlayingGlobal) {
         lastTime = performance.now();
         startPlaybackLoop();
         if (elements.previewVideo && elements.previewVideo.src) {
-            elements.previewVideo.muted = true; // Sempre mudo para usar os áudios extraídos (Sincronização Superior)
+            // elements.previewVideo.muted = true; // REMOVIDO: User quer áudio do vídeo
             elements.previewVideo.play().catch(() => {
                 // Se falhar o autoplay (política do browser), tentamos novamente no próximo frame
             });
@@ -1215,8 +1223,8 @@ function startPlaybackLoop() {
         // Busca duração (cacheado internamente no state.js)
         const projectDuration = getProjectDuration();
 
-        // Garante que o vídeo está sempre mudo sem ler do DOM se já soubermos
-        if (video && !video.muted) video.muted = true;
+        // [REMOVIDO] Forçar mute causava falta de áudio no vídeo principal
+        // if (video && !video.muted) video.muted = true;
 
         // CLIP-AWARE PLAYBACK (Cache ultra-rápido)
         if (!window.activeClipCache || globalTime < window.activeClipCache.start || globalTime > (window.activeClipCache.start + window.activeClipCache.duration)) {
@@ -1238,13 +1246,26 @@ function startPlaybackLoop() {
                 video.pause();
                 video.setAttribute('data-src', activeVideoClip.src);
                 video.src = activeVideoClip.src;
+                video.muted = false; // GARANTE SOM (User Request)
                 video.load();
                 // Não retorna, deixa o próximo frame lidar com o load
             } else if (readyState >= 2) {
                 const targetVideoTime = (activeVideoClip.offset || 0) + (globalTime - activeVideoClip.start);
-                const drift = Math.abs(video.currentTime - targetVideoTime);
+                const drift = video.currentTime - targetVideoTime;
 
-                if (drift > 0.05) video.currentTime = targetVideoTime;
+                // DRIFT CORRECTION (Smooth PlaybackRate) - Igual ao AudioPool
+                if (Math.abs(drift) < 0.05) {
+                    if (video.playbackRate !== 1.0) video.playbackRate = 1.0;
+                } else if (Math.abs(drift) < 0.5) {
+                    // Nudge suave (1.05x / 0.95x)
+                    const rate = drift < 0 ? 1.05 : 0.95;
+                    if (video.playbackRate !== rate) video.playbackRate = rate;
+                } else {
+                    // Hard seek para desvios grandes
+                    video.currentTime = targetVideoTime;
+                    video.playbackRate = 1.0;
+                }
+
                 if (video.paused && !video.ended) {
                     video.play().catch(() => { });
                 }
@@ -1260,10 +1281,19 @@ function startPlaybackLoop() {
                     if (nextClip && !window._nextVideoCache) {
                         window._nextVideoCache = document.createElement('video');
                         window._nextVideoCache.style.display = 'none';
+                        window._nextVideoCache.muted = true; // SEMPRE MUTE NO PRELOAD
                         window._nextVideoCache.preload = 'auto';
                         window._nextVideoCache.src = nextClip.src;
                         window._nextVideoCache.load();
-                        setTimeout(() => { if (window._nextVideoCache) window._nextVideoCache = null; }, 5000);
+
+                        // Cleanup automático do cache após 5s se não for usado
+                        setTimeout(() => {
+                            if (window._nextVideoCache) {
+                                window._nextVideoCache.src = "";
+                                window._nextVideoCache.remove();
+                                window._nextVideoCache = null;
+                            }
+                        }, 5000);
                     }
                 }
             }
@@ -1309,33 +1339,121 @@ function stopPlaybackLoop() {
         cancelAnimationFrame(playbackRAF);
         playbackRAF = null;
     }
+
+    // GHOST BUSTER: Mata qualquer áudio/vídeo que não seja o main ou do pool
+    document.querySelectorAll('video, audio').forEach(el => {
+        const isPool = el.id.startsWith('pool-audio');
+        const isMain = el.id === 'previewVideo'; // Ajustar ID se necessário
+
+        // Se não for oficial, mata
+        if (!isPool && !isMain) {
+            el.pause();
+            el.removeAttribute('src');
+            el.load();
+            el.remove();
+        }
+    });
 }
 
 async function getMediaDuration(src, type) {
     return new Promise((resolve) => {
         const temp = document.createElement(type.includes('audio') ? 'audio' : 'video');
+        temp.style.display = 'none'; // Ensure invisible
+        temp.muted = true; // SAFETY FORCE MUTE
         temp.src = src;
+
+        const cleanup = () => {
+            temp.pause();
+            temp.removeAttribute('src'); // Clean way to stop load without "Invalid URI" warning
+            temp.load(); // Force release
+            temp.remove(); // Explicitly remove
+        };
+
         temp.onloadedmetadata = () => {
             const d = temp.duration;
-            temp.src = ""; // Libera memória/resource
-            temp.load();
+            cleanup();
             resolve(d || 10);
         };
-        temp.onerror = () => resolve(10);
-        setTimeout(() => resolve(10), 3000);
+
+        temp.onerror = () => {
+            cleanup();
+            resolve(10);
+        };
+
+        // Timeout de segurança
+        setTimeout(() => {
+            cleanup();
+            resolve(10);
+        }, 3000);
     });
 }
 
 // Cache persistente para elementos de áudio para evitar document.getElementById no loop
-const audioPool = new Map();
+// --- AUDIO POOLING SYSTEM (ZERO-ALLOCATION) ---
+const AUDIO_POOL_SIZE = 12;
+const audioPool = [];
+const audioPoolMap = new Map(); // clipId -> poolIndex
+
+function initAudioPool() {
+    // ROBUST DUPLICATE PREVENTION: Check both array and DOM
+    if (audioPool.length > 0 || document.getElementById('pool-audio-0')) {
+        return; // Pool already initialized
+    }
+
+    // AGGRESSIVE CLEANUP: Remove any orphaned pool elements from previous sessions
+    for (let i = 0; i < 20; i++) { // Check up to 20 to catch any strays
+        const orphan = document.getElementById(`pool-audio-${i}`);
+        if (orphan) {
+            orphan.pause();
+            orphan.removeAttribute('src');
+            orphan.remove();
+        }
+    }
+
+    // Now create the fresh pool
+    for (let i = 0; i < AUDIO_POOL_SIZE; i++) {
+        const audio = document.createElement('audio');
+        audio.id = `pool-audio-${i}`;
+        audio.style.display = 'none';
+        audio.preload = 'auto'; // Importante para garantir buffer
+        document.body.appendChild(audio);
+        audioPool.push({
+            el: audio,
+            inUse: false,
+            clipId: null,
+            lastUsed: 0
+        });
+    }
+}
+
+// Inicializa o pool APENAS UMA VEZ (Chamado pelo init() principal)
+
+function getFreeAudioNode() {
+    // 1. Tentar achar um livre
+    let node = audioPool.find(n => !n.inUse);
+
+    // 2. Se não tiver, roubar o "menos recentemente usado" (LRU) que não esteja tocando
+    if (!node) {
+        // Ordena por lastUsed (menor = mais antigo)
+        const candidates = audioPool.filter(n => n.el.paused).sort((a, b) => a.lastUsed - b.lastUsed);
+        if (candidates.length > 0) {
+            node = candidates[0];
+            // Se estava em uso, desassocia do clip anterior
+            if (node.clipId) {
+                audioPoolMap.delete(node.clipId);
+                node.inUse = false;
+                node.clipId = null;
+            }
+        }
+    }
+    return node;
+}
+
+// Cache global para evitar filter() no loop
 let _audioClipsCache = null;
 let _clipsLastLength = -1;
 
 function syncSecondaryAudios(mainTime, isPlaying) {
-    const activeAudioIds = new Set();
-    const DRIFT_THRESHOLD = state.clips.length > 20 ? 0.1 : 0.05; // Adaptativo para carga alta
-    const CLEANUP_DISTANCE = 30; // Segundos para GC de áudio
-
     // Otimização: Só refaz o filtro se o número de clips mudou
     if (!_audioClipsCache || _clipsLastLength !== state.clips.length) {
         _audioClipsCache = state.clips.filter(c => c.type && c.type.includes('audio') && !c.offline);
@@ -1343,85 +1461,138 @@ function syncSecondaryAudios(mainTime, isPlaying) {
     }
 
     const audioClips = _audioClipsCache;
+    const activeClipIds = new Set();
+    const PRELOAD_WINDOW = 2.0; // Segundos para pre-carregar antes de tocar
 
-    audioClips.forEach(clip => {
-        const start = clip.start;
-        const end = clip.start + clip.duration;
-
-        // GC de áudio proativo: Se o clip estiver muito longe do playhead (passado ou futuro)
-        // e existir no pool, nós o removemos do DOM para poupar memória e threads de hardware.
-        if (Math.abs(mainTime - start) > CLEANUP_DISTANCE && Math.abs(mainTime - end) > CLEANUP_DISTANCE) {
-            const cachedPoolEl = audioPool.get(clip.id);
-            if (cachedPoolEl) {
-                cachedPoolEl.pause();
-                cachedPoolEl.src = "";
-                cachedPoolEl.remove();
-                audioPool.delete(clip.id);
+    // NUCLEAR OPTION: Se há um vídeo ativo, MUTA TODO O POOL (Previne duplicação garantida)
+    const hasActiveVideo = window.activeClipCache && window.activeClipCache.type && window.activeClipCache.type.includes('video');
+    if (hasActiveVideo) {
+        audioPool.forEach(node => {
+            if (node.el && !node.el.paused) {
+                node.el.pause();
+                node.el.muted = true;
             }
+        });
+        return; // Não processa áudio secundário enquanto vídeo está ativo
+    }
+
+    // 1. Identificar clips que DEVEM estar ativos ou em pre-load
+    audioClips.forEach(clip => {
+        // CORREÇÃO DE ÁUDIO DUPLICADO (Robustez de Tipos):
+        // Se este clip é o vídeo que já está tocando no player principal, não tocamos no pool.
+        if (window.activeClipCache && String(window.activeClipCache.id) === String(clip.id)) {
             return;
         }
 
-        if (mainTime >= start && mainTime <= end) {
-            activeAudioIds.add(clip.id);
+        const start = clip.start;
+        const end = clip.start + clip.duration;
+        const isPlayingRange = (mainTime >= start && mainTime <= end);
+        const isPreloadRange = (mainTime < start && (start - mainTime) < PRELOAD_WINDOW);
 
-            let audioEl = audioPool.get(clip.id);
+        if (isPlayingRange || isPreloadRange) {
+            activeClipIds.add(clip.id);
 
-            if (!audioEl) {
-                audioEl = document.getElementById(`audio-player-${clip.id}`);
-                if (!audioEl) {
-                    audioEl = document.createElement('audio');
-                    audioEl.id = `audio-player-${clip.id}`;
-                    audioEl.style.display = 'none';
-                    audioEl.preload = 'auto';
-                    document.body.appendChild(audioEl);
+            // Verifica se já tem um player alocado
+            let poolIndex = audioPoolMap.get(clip.id);
+            let poolNode = null;
+
+            if (poolIndex !== undefined) {
+                poolNode = audioPool[poolIndex];
+            } else {
+                poolNode = getFreeAudioNode();
+                if (poolNode) {
+                    // SHADOW KILLER: Garante que ninguém mais use este node
+                    if (poolNode.inUse) {
+                        poolNode.el.pause();
+                        poolNode.el.src = "";
+                    }
+
+                    poolNode.inUse = true;
+                    poolNode.clipId = clip.id;
+                    poolNode.lastUsed = performance.now();
+                    audioPoolMap.set(clip.id, audioPool.indexOf(poolNode));
+
+                    // Reset attributes
+                    poolNode.el.removeAttribute('src'); // Força reset
+                    poolNode.el.removeAttribute('data-src');
+                    delete poolNode.el.dataset.src;
+
+                    // PREVINE ERRO 404 (Empty Source)
+                    if (clip.src) {
+                        poolNode.el.load();
+                    }
                 }
-                audioPool.set(clip.id, audioEl);
             }
 
-            // Sincronização de FONTE (Load otimizado)
-            if (audioEl.getAttribute('data-src') !== clip.src) {
-                audioEl.setAttribute('data-src', clip.src);
-                audioEl.src = clip.src;
-                audioEl.load();
-            }
+            if (poolNode) {
+                poolNode.lastUsed = performance.now();
+                const audioEl = poolNode.el;
 
-            const targetTime = (clip.offset || 0) + (mainTime - start);
-            const drift = Math.abs(audioEl.currentTime - targetTime);
-
-            if (drift > DRIFT_THRESHOLD) {
-                audioEl.currentTime = targetTime;
-            }
-
-            if (isPlaying) {
-                if (audioEl.paused && audioEl.readyState >= 2) {
-                    audioEl.play().catch(() => { });
+                // Sincronização de Fonte (Só muda se necessário)
+                // Usamos dataset para checking rápido sem acesso ao disco
+                if (audioEl.dataset.src !== clip.src) {
+                    audioEl.src = clip.src;
+                    audioEl.dataset.src = clip.src;
+                    audioEl.load();
                 }
-            } else if (!audioEl.paused) {
-                audioEl.pause();
-            }
-        } else if (mainTime < start && start - mainTime < 5) {
-            // OPTIMIZATION: Prefetch (carregar secretamente clips que vão entrar em 5 segundos)
-            let audioEl = audioPool.get(clip.id);
-            if (!audioEl) {
-                audioEl = document.createElement('audio');
-                audioEl.id = `audio-player-${clip.id}`;
-                audioEl.preload = 'auto';
-                audioEl.style.display = 'none';
-                document.body.appendChild(audioEl);
-                audioPool.set(clip.id, audioEl);
-            }
-            if (audioEl.getAttribute('data-src') !== clip.src) {
-                audioEl.setAttribute('data-src', clip.src);
-                audioEl.src = clip.src;
-                audioEl.load(); // Inicia o buffer em background
+
+                // Sincronização de Tempo (Drift Correction com Pitch-Preserving)
+                if (isPlayingRange) {
+                    const targetTime = (clip.offset || 0) + (mainTime - start);
+                    const drift = audioEl.currentTime - targetTime;
+
+                    // 1. Drift Imperceptível (< 0.05s): Ignora (Deixa o áudio fluir)
+                    if (Math.abs(drift) < 0.05) {
+                        if (audioEl.playbackRate !== 1.0) audioEl.playbackRate = 1.0;
+                    }
+                    // 2. Drift Corrigível (0.05s - 0.5s): Ajusta velocidade (Nudge)
+                    else if (Math.abs(drift) < 0.5) {
+                        // Se está atrasado (drift < 0), acelera um pouco (1.05x)
+                        // Se está adiantado (drift > 0), desacelera (0.95x)
+                        const correctionRate = drift < 0 ? 1.05 : 0.95;
+                        if (audioEl.playbackRate !== correctionRate) audioEl.playbackRate = correctionRate;
+                    }
+                    // 3. Drift Crítico (> 0.5s): Hard Seek (Necessário)
+                    else {
+                        audioEl.currentTime = targetTime;
+                        audioEl.playbackRate = 1.0;
+                    }
+
+                    if (isPlaying) {
+                        if (audioEl.paused && audioEl.readyState >= 2) {
+                            // Tenta tocar, muda para playbackRate 1.0 se falhar algo
+                            audioEl.play().catch(() => { audioEl.playbackRate = 1.0; });
+                        }
+                    } else if (!audioEl.paused) {
+                        audioEl.pause();
+                        audioEl.playbackRate = 1.0;
+                    }
+                } else if (isPreloadRange) {
+                    // Preload: Mantém pausado e na posição correta
+                    if (!audioEl.paused) audioEl.pause();
+                    audioEl.playbackRate = 1.0;
+
+                    if (Math.abs(audioEl.currentTime - (clip.offset || 0)) > 0.1) {
+                        audioEl.currentTime = (clip.offset || 0);
+                    }
+                }
             }
         }
     });
 
-    // Cleanup: Pausar áudios que saíram do range de reprodução
-    audioPool.forEach((audioEl, clipId) => {
-        if (!activeAudioIds.has(clipId)) {
-            if (!audioEl.paused) audioEl.pause();
+    // 2. Cleanup: Desalocar players de clips que saíram do range
+    audioPoolMap.forEach((poolIndex, clipId) => {
+        if (!activeClipIds.has(clipId)) {
+            const node = audioPool[poolIndex];
+            if (node) {
+                // SHADOW KILLER: reset total
+                node.el.pause();
+                node.el.removeAttribute('src'); // Remove fonte
+                node.el.load(); // Solta o buffer
+                node.inUse = false;
+                node.clipId = null;
+            }
+            audioPoolMap.delete(clipId);
         }
     });
 }
@@ -1495,5 +1666,10 @@ if (elements.emptyState) {
         }
     });
 }
+
+// Limpeza Automática de Sessão (Beacon API)
+window.addEventListener('beforeunload', () => {
+    navigator.sendBeacon('api/cleanup_session.php');
+});
 
 // Final do arquivo

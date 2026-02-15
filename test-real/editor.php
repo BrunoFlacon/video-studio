@@ -332,8 +332,10 @@ header("Content-Security-Policy: default-src 'self' data: blob:; script-src 'sel
 
                             <button type="button" class="cloud-service-btn" id="btnImportDropbox" name="import_dropbox"
                                 data-service="dropbox" title="Dropbox">
-                                <img src="assets/img/cloud/dropbox.svg" alt="Dropbox" class="cloud-icon">
-                                <span class="cloud-label">Dropbox</span>
+                                <span class="cloud-label">
+                                <svg viewBox="0 0 24 24" alt="dropbox" fill="#0848e1" class="cloud-icon">
+                                <path d="M6 1.807L0 5.629l6 3.822 6.001-3.822L6 1.807zM18 1.807l-6 3.822 6 3.822 6-3.822-6-3.822zM0 13.274l6 3.822 6.001-3.822L6 9.452l-6 3.822zM18 9.452l-6 3.822 6 3.822 6-3.822-6-3.822zM6 18.371l6.001 3.822 6-3.822-6-3.822L6 18.371z"/>
+                                </svg>Dropbox</span>
                             </button>
                             <button type="button" class="cloud-service-btn" id="btnImportOneDrive"
                                 name="import_onedrive" data-service="onedrive" title="OneDrive">
@@ -595,7 +597,7 @@ header("Content-Security-Policy: default-src 'self' data: blob:; script-src 'sel
         </div>
     </div>
 
-    <!-- Configurações do Projeto (Definição Global para evitar 404) -->
+    <!-- Configurações do Projeto (Unified) -->
     <script nonce="<?php echo $nonce; ?>">
         window.projectSettings = window.projectSettings || {
             version: "2.1.0-stable",
@@ -607,17 +609,7 @@ header("Content-Security-Policy: default-src 'self' data: blob:; script-src 'sel
             sampleRate: 44100,
             explorer: 'native'
         };
-        // Compatibilidade com LIVE_CUT_PROJECT_SETTINGS legado
-        window.LIVE_CUT_PROJECT_SETTINGS = window.projectSettings;
     </script>
-
-    <?php
-    $settingsFile = 'app_settings.js';
-    $settingsPath = __DIR__ . '/' . $settingsFile;
-    if (file_exists($settingsPath)): ?>
-        <script src="<?php echo $settingsFile; ?>?v=<?php echo filemtime($settingsPath); ?>"
-            nonce="<?php echo $nonce; ?>"></script>
-    <?php endif; ?>
 
     <script nonce="<?php echo $nonce; ?>">
         // Global project settings fallback to prevent 404 errors from external plugins/tools

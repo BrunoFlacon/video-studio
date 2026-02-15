@@ -6,7 +6,9 @@ error_reporting(E_ALL);
 header('Content-Type: application/json');
 
 // Captura qualquer saída inesperada (como warnings de permissão)
+// Captura qualquer saída inesperada (como warnings de permissão)
 ob_start();
+session_start(); // Inicia sessão para rastrear uploads
 
 try {
     // Configurações
@@ -47,6 +49,12 @@ try {
 
     if (move_uploaded_file($file['tmp_name'], $destination)) {
         ob_end_clean(); // Descarta qualquer lixo/warnings gerados antes
+        // Registra na sessão para limpeza automática
+        if (!isset($_SESSION['temp_uploads'])) {
+            $_SESSION['temp_uploads'] = [];
+        }
+        $_SESSION['temp_uploads'][] = $destination;
+
         echo json_encode([
             'status' => 'success',
             'path' => $destination,

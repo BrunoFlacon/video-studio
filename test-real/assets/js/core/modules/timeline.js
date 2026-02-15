@@ -75,142 +75,58 @@ export function renderTimeline(containerEl, pxPerSec) {
         if (!state.tracks.find(t => t.id === el.id)) el.remove();
     });
 
-    let ruler = document.getElementById('timelineRuler');
-    if (!ruler) {
-        ruler = document.createElement('div');
-        ruler.className = 'timeline-ruler';
-        ruler.id = 'timelineRuler';
-        containerEl.prepend(ruler);
-    }
-    // A largura da régua deve ser o totalWidth para cobrir todos os clips
-    if (ruler.style.width !== `${totalWidth}px`) {
-        ruler.style.setProperty('width', `${totalWidth}px`);
-    }
-    ruler.style.setProperty('left', '80px'); // Garante o alinhamento com os clips
-
-    // --- RENDERIZAR RÉGUA DE TEMPO (Reaproveitamento) ---
-    // ====== PREMIERE-STYLE: Steps e Formato adaptativos ao Zoom ======
-    let step, subStep, formatFn;
-
-    if (pxPerSec < 0.5) {
-        step = 300;
-        subStep = 60;
-        formatFn = (t) => {
-            const h = Math.floor(t / 3600);
-            const m = Math.floor((t % 3600) / 60);
-            return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:00` : `${m}:00`;
-        };
-    } else if (pxPerSec < 2) {
-        step = 60;
-        subStep = 15;
-        formatFn = (t) => {
-            const m = Math.floor(t / 60);
-            const s = Math.floor(t % 60);
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        };
-    } else if (pxPerSec < 5) {
-        step = 30;
-        subStep = 10;
-        formatFn = (t) => {
-            const m = Math.floor(t / 60);
-            const s = Math.floor(t % 60);
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        };
-    } else if (pxPerSec < 15) {
-        step = 10;
-        subStep = 5;
-        formatFn = (t) => {
-            const m = Math.floor(t / 60);
-            const s = Math.floor(t % 60);
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        };
-    } else if (pxPerSec < 50) {
-        step = 5;
-        subStep = 1;
-        formatFn = (t) => `${t}s`;
-    } else if (pxPerSec < 150) {
-        step = 1;
-        subStep = 0.5;
-        formatFn = (t) => {
-            const m = Math.floor(t / 60);
-            const s = Math.floor(t % 60);
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        };
-    } else if (pxPerSec < 500) {
-        step = 0.5;
-        subStep = 0.1;
-        formatFn = (t) => `${t.toFixed(1)}s`;
-    } else {
-        step = 0.1;
-        subStep = 0.02;
-        formatFn = (t) => {
-            const s = Math.floor(t);
-            const ms = Math.round((t - s) * 1000);
-            return `${s}:${ms.toString().padStart(3, '0')}`;
-        };
+    let rulerContainer = document.getElementById('timelineRuler');
+    if (!rulerContainer) {
+        rulerContainer = document.createElement('div');
+        rulerContainer.className = 'timeline-ruler';
+        rulerContainer.id = 'timelineRuler';
+        containerEl.prepend(rulerContainer);
     }
 
-    const startTime = Math.max(0, (layout.scrollLeft - TIMELINE_BUFFER_PX) / (pxPerSec || 1));
-    const endTime = Math.min(projectDuration, (layout.scrollLeft + layout.viewWidth + TIMELINE_BUFFER_PX) / (pxPerSec || 1));
-
-    // Mapeia marcadores atuais para reaproveitamento
-    const existingMarkers = Array.from(ruler.querySelectorAll('.time-marker'));
-    let markerIdx = 0;
-
-    // Proteção contra loops infinitos por zoom muito baixo ou step incorreto
-    if (!step || step <= 0) step = 1;
-    let tStart = Math.floor(startTime / step) * step;
-
-    // --- RENDERIZAR RÉGUA DE TEMPO (Otimizado por Viewport) ---
-    const markersToRender = [];
-    // Otimização: Se o projeto for muito longo, limitamos os marcadores para não sobrecarregar o DOM
-    // mas priorizamos a área visível.
-    for (let t = tStart; t <= endTime; t += step) {
-        markersToRender.push(t);
-        if (markersToRender.length > 500) break; // Aumentado para cobrir telas ultra-wide
+    // --- CANVAS RULER IMPLEMENTATION (GPU ACCELERATED) ---
+    let rulerCanvas = rulerContainer.querySelector('canvas');
+    if (!rulerCanvas) {
+        rulerCanvas = document.createElement('canvas');
+        rulerCanvas.height = 25;
+        rulerContainer.appendChild(rulerCanvas);
     }
 
-    markersToRender.forEach((t) => {
-        const x = t * pxPerSec;
+    // Resize canvas if needed (Layout + Buffer)
+    // Usamos um tamanho fixo grande ou dinâmico? Dinâmico é melhor para memória.
+    // Mas para scroll suave, precisamos de um buffer ou redesenhar no scroll.
+    // A estratégia mais leve é: Canvas tem o tamanho do VIEWPORT (ou um pouco mais) e movemos o offsetX.
 
-        // Marcador Principal
-        let marker = existingMarkers[markerIdx++];
-        if (!marker) {
-            marker = document.createElement('div');
-            marker.className = 'time-marker';
-            ruler.appendChild(marker);
-        }
-        marker.style.setProperty('transform', `translateX(${x}px)`);
-        marker.style.setProperty('left', '0');
-
-        let labelSpan = marker.querySelector('span');
-        if (!labelSpan) {
-            labelSpan = document.createElement('span');
-            marker.appendChild(labelSpan);
-        }
-        const labelText = formatFn(t);
-        if (labelSpan.textContent !== labelText) labelSpan.textContent = labelText;
-
-        if (subStep && subStep < step && pxPerSec > 5) { // Só sub-ticks se zoom for alto
-            for (let st = t + subStep; st < t + step && st <= endTime; st += subStep) {
-                if (markerIdx > 800) break;
-                const sx = (st * pxPerSec);
-                let sub = existingMarkers[markerIdx++];
-                if (!sub) {
-                    sub = document.createElement('div');
-                    sub.className = 'time-marker sub-tick';
-                    ruler.appendChild(sub);
-                }
-                sub.style.setProperty('transform', `translateX(${sx}px)`);
-                sub.style.setProperty('left', '0');
-            }
-        }
-    });
-    // Remove marcadores excedentes (Régua)
-    while (markerIdx < existingMarkers.length) {
-        existingMarkers[existingMarkers.length - 1].remove();
-        existingMarkers.pop();
+    // Atualiza tamanho do canvas para cobrir a área visível + buffer
+    const canvasWidth = layout.viewWidth + TIMELINE_BUFFER_PX * 2;
+    if (rulerCanvas.width !== canvasWidth) {
+        rulerCanvas.width = canvasWidth;
     }
+
+    // Posiciona o canvas para acompanhar o scroll (Virtual scrolling)
+    // O container .timeline-ruler já tem position absolute. 
+    // Mas precisamos que o canvas fique fixo na tela ou se mova?
+    // Melhor approach: O canvas é filho do timeline, ele tem width total? NÃO. Canvas gigante trava.
+    // O canvas deve ter width do viewport e ficar "fixed" visualmente, mas desenhamos o offset dentro dele.
+
+    // ATUALIZAÇÃO: Para simplificar e evitar complexidade de posicionamento relativo:
+    // O canvas terá largura do viewport e ficará 'sticky' via JS.
+    rulerCanvas.style.position = 'absolute';
+    rulerCanvas.style.left = `${layout.scrollLeft}px`;
+    rulerCanvas.style.top = '0';
+
+    const ctx = rulerCanvas.getContext('2d', { alpha: false }); // Alpha false otimiza
+
+    // Redesenha Ruler tick marks
+    drawRulerCanvas(ctx, layout.scrollLeft, layout.viewWidth, pxPerSec, projectDuration);
+
+    // Garante tamanho do container para scroll funcionar
+    if (rulerContainer.style.width !== `${totalWidth}px`) {
+        rulerContainer.style.setProperty('width', `${totalWidth}px`);
+    }
+
+    // Remove legacy markers if any exist
+    // existingMarkers logic removed.
+
 
     // 2.1 Renderizar Marcadores de Anotações (Batch Optimized)
     try {
@@ -1066,4 +982,90 @@ export function toggleEmptyState() {
         if (emptyState) emptyState.classList.add('hidden');
         if (previewVideo) previewVideo.classList.remove('hidden');
     }
+}
+/**
+ * Desenha a régua usando Canvas API (Alta Performance)
+ */
+function drawRulerCanvas(ctx, scrollLeft, viewWidth, pxPerSec, totalDuration) {
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+
+    // Clear
+    ctx.fillStyle = '#0d0d0f';
+    ctx.fillRect(0, 0, width, height);
+
+    // Top border
+    ctx.fillStyle = '#27272a';
+    ctx.fillRect(0, height - 1, width, 1);
+
+    // Calcula range de tempo visível
+    // O canvas está deslocado por 'scrollLeft' (via CSS left), então o x=0 no canvas é o scrollLeft no mundo real
+    // Espera... se definimos canvas.style.left = scrollLeft, então o canvas 'acompanha' o scroll.
+    // Logo, o pixel 0 do canvas corresponde ao pixel 'scrollLeft' da timeline global.
+    // O tempo em x=0 do canvas é: scrollLeft / pxPerSec.
+
+    const startPixel = scrollLeft;
+    const endPixel = scrollLeft + width; // renderizamos um pouco mais que o viewWidth se o canvas for maior
+
+    const startTime = startPixel / pxPerSec;
+    const endTime = endPixel / pxPerSec;
+
+    // Lógica de Steps (Mesma do original)
+    let step, subStep, formatFn;
+
+    if (pxPerSec < 0.5) {
+        step = 300; subStep = 60;
+        formatFn = t => { const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60); return h > 0 ? `${h}:${m.toString().padStart(2, '0')}` : `${m}:00`; };
+    }
+    else if (pxPerSec < 2) { step = 60; subStep = 15; formatFn = t => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`; }
+    else if (pxPerSec < 15) { step = 10; subStep = 2; formatFn = t => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`; }
+    else if (pxPerSec < 50) { step = 5; subStep = 1; formatFn = t => `${t}s`; }
+    else if (pxPerSec < 150) { step = 1; subStep = 0.5; formatFn = t => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`; }
+    else if (pxPerSec < 500) { step = 0.5; subStep = 0.1; formatFn = t => `${t.toFixed(1)}s`; }
+    else { step = 0.1; subStep = 0.05; formatFn = t => `${Math.floor(t)}:${Math.round((t % 1) * 1000).toString().padStart(3, '0')}`; }
+
+    // Ajusta start para múltiplo do step
+    const tStart = Math.floor(startTime / step) * step;
+
+    ctx.fillStyle = '#a1a1aa'; // Cor do texto
+    ctx.strokeStyle = '#3f3f46'; // Cor do tick
+    ctx.lineWidth = 1;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+
+    ctx.beginPath();
+
+    for (let t = tStart; t <= endTime; t += step) {
+        // Posição X relativa ao Canvas
+        // X global = t * pxPerSec
+        // X canvas = X global - scrollLeft
+        const xGlobal = t * pxPerSec;
+        const xLocal = xGlobal - scrollLeft;
+
+        if (xLocal < -50 || xLocal > width + 50) continue;
+
+        // Tick Principal
+        ctx.moveTo(xLocal + 0.5, 0);
+        ctx.lineTo(xLocal + 0.5, height);
+
+        // Label
+        if (t >= 0) {
+            ctx.fillText(formatFn(t), xLocal + 4, 12);
+        }
+
+        // Sub-ticks
+        if (subStep && pxPerSec > 5) {
+            for (let st = t + subStep; st < t + step; st += subStep) {
+                const sxGlobal = st * pxPerSec;
+                const sxLocal = sxGlobal - scrollLeft;
+                if (sxLocal > width) break;
+
+                // Sub tick height (40% do bottom)
+                const tickH = height * 0.4;
+                ctx.moveTo(sxLocal + 0.5, height - tickH);
+                ctx.lineTo(sxLocal + 0.5, height);
+            }
+        }
+    }
+    ctx.stroke();
 }

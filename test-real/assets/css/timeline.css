@@ -1,3 +1,15 @@
+/* GPU Acceleration for Critical Elements */
+.timeline,
+.tracks,
+.track,
+.clip,
+.playhead,
+.timeline-ruler {
+    will-change: transform;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
 .timeline-container {
     height: 350px;
     background: #09090b;
@@ -263,6 +275,7 @@
     pointer-events: auto;
     /* Permitir clicar no input dentro */
 }
+
 /* CSS para o botão de deletar mídia e melhorias na timeline */
 
 .media-delete-btn {

@@ -17,7 +17,7 @@ export async function uploadMedia(file) {
     formData.append('media', file);
 
     try {
-        const response = await fetch('/Live-Cut-Editor/test-real/assets/api/upload.php', {
+        const response = await fetch('/Live-Cut-Editor/test-real/api/upload.php', {
             method: 'POST',
             body: formData
         });

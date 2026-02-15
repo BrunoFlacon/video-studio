@@ -6,9 +6,10 @@
 header('Content-Type: application/json');
 
 // 1. Configurações de Diretórios
-$assetsDir = dirname(__DIR__) . "/";
-$outputDir = $assetsDir . "exports/";
-$uploadsDir = $assetsDir . "uploads/";
+$rootDir = dirname(__DIR__) . "/";
+$assetsDir = $rootDir . "assets/";
+$outputDir = $rootDir . "exports/";
+$uploadsDir = $rootDir . "uploads/";
 
 if (!is_dir($outputDir))
     @mkdir($outputDir, 0777, true);
@@ -17,6 +18,24 @@ if (!is_dir($uploadsDir))
 
 // 2. Recebe Input
 $input = json_decode(file_get_contents("php://input"), true);
+
+// GARBAGE COLLECTION (30 Minutos)
+// Remove arquivos de exportação antigos para não lotar o disco
+try {
+    if (is_dir($outputDir)) {
+        $files = glob($outputDir . '*');
+        $now = time();
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                if ($now - filemtime($file) >= 1800) { // 30 min = 1800s
+                    @unlink($file);
+                }
+            }
+        }
+    }
+} catch (Exception $e) {
+    // Silêncio é ouro na limpeza
+}
 
 if (!$input || !isset($input['clips'])) {
     http_response_code(400);

@@ -14,9 +14,18 @@ export async function getAudioBuffer(url) {
     if (bufferCache.has(url)) return bufferCache.get(url);
     if (pendingRequests.has(url)) return pendingRequests.get(url);
 
+    // CONTROLE DE CONCORRÊNCIA (Semáforo)
+    // Evita travar a thread principal decodificando 50 arquivos ao mesmo tempo.
+    while (window.activeDecodes >= 2) {
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    if (!window.activeDecodes) window.activeDecodes = 0;
+    window.activeDecodes++;
+
     const promise = (async () => {
         try {
-            if (!window.audioUnlocked) return null;
+            if (!window.audioUnlocked) { window.activeDecodes--; return null; }
 
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -59,6 +68,7 @@ export async function getAudioBuffer(url) {
             window.deadMediaSet.add(url);
             return null;
         } finally {
+            window.activeDecodes--;
             pendingRequests.delete(url);
         }
     })();
@@ -113,6 +123,16 @@ export function drawBufferWaveform(canvas, audioBuffer, color = '#10b981', offse
             if (step > 100) {
                 const val = data[start] || 0;
                 min = val; max = val;
+                // OTIMIZAÇÃO: Stride (Pular amostras)
+                // Se o bucket for gigante (ex: zoom out em musica longa), não lemos todos os 44k samples
+                // Limitamos a ler no máximo 64 amostras representativas por pixel
+                const stride = Math.ceil((end - start) / 64);
+
+                for (let j = start; j < end; j += stride) {
+                    const v = data[j];
+                    if (v < min) min = v;
+                    if (v > max) max = v;
+                }
             } else {
                 for (let j = start; j < end; j++) {
                     const val = data[j];

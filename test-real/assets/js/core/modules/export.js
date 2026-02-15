@@ -173,7 +173,7 @@ export async function handleBatchExport(preset) {
         if (percentageText) percentageText.innerText = `${totalProgress}%`;
 
         try {
-            const response = await fetch('assets/api/export.php', {
+            const response = await fetch('api/export.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -208,7 +208,7 @@ export async function handleBatchExport(preset) {
     if (!currentAbortController?.signal.aborted) {
         showExportStage('success');
         if (document.getElementById('exportResultText')) {
-            document.getElementById('exportResultText').innerText = `Batch export de ${videoClips.length} arquivos concluído!`;
+            document.getElementById('exportResultText').innerText = `Batch export concluído! (Arquivos expiram em 30min)`;
         }
     }
 }
@@ -292,7 +292,7 @@ export async function handleExportProcess(preset) {
             useGPU: useGPU
         };
 
-        const response = await fetch('assets/api/export.php', {
+        const response = await fetch('api/export.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -365,8 +365,34 @@ function setupModalActions(result) {
     const newBtnDownload = btnDownload.cloneNode(true);
     btnDownload.parentNode.replaceChild(newBtnDownload, btnDownload);
 
-    newBtnDownload.addEventListener('click', (e) => {
+    newBtnDownload.addEventListener('click', async (e) => {
         e.preventDefault();
+
+        // SAVE PICKER (Moderno)
+        if (window.showSaveFilePicker) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: `${result.fileName}.${result.video_url.split('.').pop() || 'mp4'}`,
+                    types: [{
+                        description: 'Video File',
+                        accept: { 'video/mp4': ['.mp4'] },
+                    }],
+                });
+                const writable = await handle.createWritable();
+                const response = await fetch(result.video_url);
+                await response.body.pipeTo(writable);
+                toast('Arquivo salvo com sucesso!', 'success');
+                return;
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    // Fallback silencioso se der erro ou usuário cancelar
+                } else {
+                    return; // Cancelado pelo user
+                }
+            }
+        }
+
+        // FALLBACK (Download Clássico)
         const a = document.createElement('a');
         // Garante que o caminho seja tratado como relativo à raiz do site se necessário
         const finalUrl = result.video_url.startsWith('http') ? result.video_url : result.video_url;
