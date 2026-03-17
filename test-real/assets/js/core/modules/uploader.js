@@ -17,24 +17,36 @@ export async function uploadMedia(file) {
     formData.append('media', file);
 
     try {
-        const response = await fetch('/Live-Cut-Editor/test-real/api/upload.php', {
+        const response = await fetch('api/upload.php', {
             method: 'POST',
             body: formData
         });
 
-        const result = await response.json();
+        const rawText = await response.text();
 
-        if (result.status === 'success') {
-            return {
-                filename: result.filename,
-                path: result.path
-            };
-        } else {
-            showToast(`Erro no upload: ${result.error}`, 'error');
-            return null;
+        // Tenta fazer parse do JSON
+        let result;
+        try {
+            result = JSON.parse(rawText);
+        } catch (e) {
+            console.error('Resposta não-JSON do servidor:', rawText);
+            // Se for erro PHP HTML, tenta limpar tags
+            const cleanText = rawText.replace(/<[^>]*>/g, '').trim().substring(0, 150);
+            throw new Error(`Falha no servidor: ${cleanText || 'Resposta inválida'}`);
         }
+
+        if (!response.ok || result.status !== 'success') {
+            throw new Error(result.error || `Erro HTTP ${response.status}`);
+        }
+
+        return {
+            filename: result.filename,
+            path: result.path
+        };
+
     } catch (err) {
-        showToast('Falha crítica ao enviar arquivo ao servidor.', 'error');
+        console.error('Erro no upload:', err);
+        showToast(err.message, 'error');
         return null;
     }
 }

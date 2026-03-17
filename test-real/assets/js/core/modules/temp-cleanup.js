@@ -1,7 +1,9 @@
 // temp-cleanup.js
 // Gerenciamento e limpeza automática de arquivos temporários
+// CSP-Safe: Construção via DOM API (zero innerHTML)
 
 import { showToast } from './file-operations.js';
+import { el, createSVG } from './dom-utils.js';
 
 export class TempCleanupManager {
     constructor() {
@@ -11,10 +13,7 @@ export class TempCleanupManager {
     }
 
     init() {
-        // Run check on startup
-        setTimeout(() => this.checkAndCleanup(), 5000); // Wait 5s after boot
-
-        // Schedule periodic checks
+        setTimeout(() => this.checkAndCleanup(), 5000);
         setInterval(() => this.checkAndCleanup(), this.CHECK_INTERVAL);
     }
 
@@ -22,17 +21,13 @@ export class TempCleanupManager {
         const lastCheck = localStorage.getItem('last_cleanup_check');
         const now = Date.now();
 
-        // Only run full check if it hasn't run today
         if (lastCheck && (now - parseInt(lastCheck)) < this.CHECK_INTERVAL) {
             return;
         }
 
-
-
         let cleanedCount = 0;
         let freedSpace = 0;
 
-        // 1. Clean old waveform cache (Short term)
         const waveformKeys = this.getKeysStartingWith('waveform_cache_');
         waveformKeys.forEach(key => {
             try {
@@ -47,24 +42,15 @@ export class TempCleanupManager {
                     }
                 }
             } catch (e) {
-                // Corrupted data, remove it
                 localStorage.removeItem(key);
             }
         });
-
-        // 2. Clean old history metadata (Long term)
-        // (Assuming we might store multiple history snapshots in future)
-
-        // 3. Clean Project Drafts/Auto-saves older than 30 days
-        // (If we implement multiple auto-saves)
 
         localStorage.setItem('last_cleanup_check', now.toString());
 
         if (cleanedCount > 0) {
             const sizeMB = (freedSpace / (1024 * 1024)).toFixed(2);
             showToast(`Limpeza automática: ${sizeMB}MB liberados`, 'success', 4000);
-        } else {
-
         }
     }
 
@@ -85,93 +71,77 @@ export class TempCleanupManager {
             const key = localStorage.key(i);
             total += localStorage.getItem(key).length;
         }
-        return total; // in bytes (approximate, since strings are UTF-16)
+        return total;
     }
 
     showCleanupDialog() {
         const usageBytes = this.getStorageUsage();
         const usageMB = (usageBytes / (1024 * 1024)).toFixed(2);
-        const percent = Math.min(100, (usageBytes / (5 * 1024 * 1024)) * 100).toFixed(1); // Assuming 5MB limit
+        const percent = Math.min(100, (usageBytes / (5 * 1024 * 1024)) * 100).toFixed(1);
 
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content cleanup-modal">
-                <h3>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
-                        <line x1="10" y1="11" x2="10" y2="17"></line>
-                        <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                    Gerenciamento de Armazenamento
-                </h3>
-                
-                <div class="storage-stats info-box p-12 mb-20">
-                    <div class="flex-between mb-20" style="margin-bottom: 8px;">
-                        <span>Uso do LocalStorage</span>
-                        <strong>${usageMB} MB</strong>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${percent}%;"></div>
-                    </div>
-                    <div class="font-sm text-muted text-right">
-                        Aprox. ${percent}% da quota padrão
-                    </div>
-                </div>
-                
-                <div class="cleanup-options">
-                    <label class="checkbox-option" for="cleanCache">
-                        <input type="checkbox" id="cleanCache" name="clean_cache" checked />
-                        <div>
-                            <span>Limpar cache de waveforms</span>
-                            <small class="text-muted">Remove dados de visualização de áudio antigos</small>
-                        </div>
-                    </label>
-                    <label class="checkbox-option" for="cleanHistory">
-                        <input type="checkbox" id="cleanHistory" name="clean_history" />
-                        <div>
-                            <span>Limpar histórico de projetos antigos</span>
-                            <small class="text-muted">Remove registros de undo/redo de sessões passadas</small>
-                        </div>
-                    </label>
-                </div>
-                
-                <div class="modal-actions">
-                    <button class="btn-secondary modal-cancel">Cancelar</button>
-                    <button class="btn-primary modal-clean danger-bg">
-                        Limpar Agora
-                    </button>
-                </div>
-            </div>
-        `;
+        const modal = el('div', { className: 'modal-overlay' });
+        const content = el('div', { className: 'modal-content cleanup-modal' }, [
+            el('h3', {}, [
+                createSVG('0 0 24 24', ['M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2', 'M10 11v6', 'M14 11v6'], { width: 24, height: 24, fill: 'none', stroke: 'currentColor', strokeWidth: 2 }),
+                el('span', { textContent: ' Gerenciamento de Armazenamento' })
+            ]),
 
+            el('div', { className: 'storage-stats info-box p-12 mb-20' }, [
+                el('div', { className: 'flex-between mb-20', style: { marginBottom: '8px' } }, [
+                    el('span', { textContent: 'Uso do LocalStorage' }),
+                    el('strong', { textContent: `${usageMB} MB` })
+                ]),
+                el('div', { className: 'progress-bar' }, [
+                    el('div', { className: 'progress-fill', style: { width: `${percent}%` } })
+                ]),
+                el('div', { className: 'font-sm text-muted text-right', textContent: `Aprox. ${percent}% da quota padrão` })
+            ]),
+
+            el('div', { className: 'cleanup-options' }, [
+                el('label', { className: 'checkbox-option', htmlFor: 'cleanCache' }, [
+                    el('input', { type: 'checkbox', id: 'cleanCache', checked: 'checked' }),
+                    el('div', {}, [
+                        el('span', { textContent: 'Limpar cache de waveforms' }),
+                        el('small', { className: 'text-muted', textContent: 'Remove dados de visualização de áudio antigos' })
+                    ])
+                ]),
+                el('label', { className: 'checkbox-option', htmlFor: 'cleanHistory' }, [
+                    el('input', { type: 'checkbox', id: 'cleanHistory' }),
+                    el('div', {}, [
+                        el('span', { textContent: 'Limpar histórico de projetos antigos' }),
+                        el('small', { className: 'text-muted', textContent: 'Remove registros de undo/redo de sessões passadas' })
+                    ])
+                ])
+            ]),
+
+            el('div', { className: 'modal-actions' }, [
+                el('button', { className: 'btn-secondary modal-cancel', textContent: 'Cancelar', onClick: () => modal.remove() }),
+                el('button', {
+                    className: 'btn-primary modal-clean danger-bg', textContent: 'Limpar Agora', onClick: () => {
+                        const cleanCache = modal.querySelector('#cleanCache').checked;
+                        const cleanHistory = modal.querySelector('#cleanHistory').checked;
+                        let freed = 0;
+                        if (cleanCache) {
+                            const keys = this.getKeysStartingWith('waveform_cache_');
+                            keys.forEach(k => {
+                                freed += localStorage.getItem(k).length;
+                                localStorage.removeItem(k);
+                            });
+                        }
+                        if (cleanHistory) {
+                            localStorage.removeItem('live_cut_history_meta');
+                        }
+                        const freedMB = (freed / (1024 * 1024)).toFixed(2);
+                        showToast(`Limpeza manual concluída: ${freedMB}MB liberados`, 'success', 3000);
+                        modal.remove();
+                    }
+                })
+            ])
+        ]);
+
+        modal.appendChild(content);
         document.body.appendChild(modal);
 
-        modal.querySelector('.modal-clean').addEventListener('click', () => {
-            const cleanCache = modal.querySelector('#cleanCache').checked;
-            const cleanHistory = modal.querySelector('#cleanHistory').checked;
-
-            let freed = 0;
-
-            if (cleanCache) {
-                const keys = this.getKeysStartingWith('waveform_cache_');
-                keys.forEach(k => {
-                    freed += localStorage.getItem(k).length;
-                    localStorage.removeItem(k);
-                });
-            }
-
-            if (cleanHistory) {
-                // Clear implementation-specific history keys if needed
-                localStorage.removeItem('live_cut_history_meta');
-            }
-
-            const freedMB = (freed / (1024 * 1024)).toFixed(2);
-            showToast(`Limpeza manual concluída: ${freedMB}MB liberados`, 'success', 3000);
-            modal.remove();
-        });
-
-        modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
         modal.addEventListener('click', (e) => {
             if (e.target === modal) modal.remove();
         });

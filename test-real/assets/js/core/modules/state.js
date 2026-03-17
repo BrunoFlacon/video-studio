@@ -27,8 +27,21 @@ export const state = {
 
 // Função auxiliar para forçar atualização da UI (padrão Observer simples)
 export const events = new EventTarget();
-export function notifyChange(event = 'render') {
-    events.dispatchEvent(new Event(event));
+export function notifyChange(event = 'render', detail = null) {
+    events.dispatchEvent(new CustomEvent(event, { detail }));
+}
+
+/**
+ * Atualiza as configurações do projeto e sincroniza com a UI e exportação.
+ */
+export function updateProjectSettings(newSettings) {
+    state.projectSettings = {
+        ...state.projectSettings,
+        ...newSettings
+    };
+    saveState();
+    notifyChange('render', { type: 'settings', settings: state.projectSettings });
+    notifyChange('settingsChanged', state.projectSettings);
 }
 
 export function takeSnapshot() {
@@ -140,6 +153,19 @@ export function addClipToState(src, start, type = 'video', duration = 10, trackI
         effects: [],
         exportName: '', // Nome personalizado para exportação individual
         channel: options.channel || 'stereo', // 'left', 'right' ou 'stereo'
+        // Sistema de Transformação e Keyframes
+        transform: {
+            scale: 1,
+            rotate: 0,
+            x: 0,
+            y: 0,
+            opacity: 1,
+            blendMode: 'normal',
+            flipH: false,
+            flipV: false,
+            ...(options.transform || {})
+        },
+        keyframes: options.keyframes || [], // [{time: 0, properties: {scale: 1.2, x: 100}}]
         ...options // Spreads other potential options
     };
 
@@ -168,12 +194,16 @@ export function splitClip(clipId, splitTime) {
 
     // 2. Cria o novo clip (Direita)
     const newClip = {
-        ...JSON.parse(JSON.stringify(originalClip)), // Clone profundo
+        ...originalClip, // Shallow copy first
         id: crypto.randomUUID(),
         name: originalClip.name + ' (Copy)',
         start: splitTime,
         duration: originalDuration - relativeSplit,
-        offset: originalClip.offset + relativeSplit
+        offset: originalClip.offset + relativeSplit,
+        // Deep copy nested objects
+        transform: JSON.parse(JSON.stringify(originalClip.transform || {})),
+        keyframes: JSON.parse(JSON.stringify(originalClip.keyframes || [])),
+        effects: JSON.parse(JSON.stringify(originalClip.effects || []))
     };
 
     // Insere o novo clip logo após o original
@@ -307,25 +337,12 @@ export function rippleDelete(trackId) {
 
 // ==== UTILS ====
 
-/** * Calcula a duração total do projeto baseada no clip mais longo */
 export function getProjectDuration() {
-    // Cache para evitar recálculo desnecessário se nada mudou
-    if (window._durationCache && window._durationCache.clipsLength === state.clips.length) {
-        return window._durationCache.value;
-    }
-
-    if (state.clips.length === 0) return 30; // Mínimo de 30s se vazio
+    if (state.clips.length === 0) return 30;
 
     const maxEnd = Math.max(...state.clips.map(c => c.start + c.duration));
-    const videoDuration = state.videoElement ? state.videoElement.duration : 0;
-    const result = Math.max(30, maxEnd, videoDuration) + 2;
-
-    window._durationCache = {
-        clipsLength: state.clips.length,
-        value: result
-    };
-
-    return result;
+    // Duração mínima sugerida de 30s ou o final do último clipe + 2s de respiro
+    return Math.max(30, maxEnd + 2);
 }
 
 /** * Formata tempo em segundos para MM:SS */
@@ -394,4 +411,56 @@ export function updateVideoTimeFromClick(e, timeline, video, pxPerSec) {
     if (playhead) updatePlayheadPosition(playhead, time, pxPerSec);
 
     return time; // CRÍTICO: Retorna o tempo para permitir Snapping no clique
+}
+/**
+ * Retorna as propriedades de transformação interpoladas para um clip em um determinado tempo global
+ */
+export function getInterpolatedTransform(clip, globalTime) {
+    if (!clip.keyframes || clip.keyframes.length === 0) {
+        return { ...clip.transform };
+    }
+
+    const localTime = globalTime - clip.start;
+
+    // Filtra keyframes relevantes
+    const sorted = [...clip.keyframes].sort((a, b) => a.time - b.time);
+
+    // Se o tempo está antes do primeiro keyframe
+    if (localTime <= sorted[0].time) return { ...clip.transform, ...sorted[0].properties };
+
+    // Se o tempo está depois do último keyframe
+    if (localTime >= sorted[sorted.length - 1].time) return { ...clip.transform, ...sorted[sorted.length - 1].properties };
+
+    // Encontra os dois keyframes entre o tempo atual
+    let startKF = sorted[0];
+    let endKF = sorted[sorted.length - 1];
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+        if (localTime >= sorted[i].time && localTime <= sorted[i + 1].time) {
+            startKF = sorted[i];
+            endKF = sorted[i + 1];
+            break;
+        }
+    }
+
+    const t = (localTime - startKF.time) / (endKF.time - startKF.time);
+
+    // Interpolação Linear (Lerp)
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    const props = { ...clip.transform };
+    const kKeys = Object.keys({ ...startKF.properties, ...endKF.properties });
+
+    kKeys.forEach(key => {
+        const valA = startKF.properties[key] !== undefined ? startKF.properties[key] : clip.transform[key];
+        const valB = endKF.properties[key] !== undefined ? endKF.properties[key] : clip.transform[key];
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+            props[key] = lerp(valA, valB, t);
+        } else {
+            props[key] = t < 0.5 ? valA : valB; // Para propriedades não numéricas (blendMode)
+        }
+    });
+
+    return props;
 }

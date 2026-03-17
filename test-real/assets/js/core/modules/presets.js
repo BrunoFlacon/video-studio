@@ -1,9 +1,11 @@
 // presets.js
 // Gerenciador de Presets de Efeitos e Configurações
+// CSP-Safe: Construção via DOM API (zero innerHTML)
 
 import { state } from './state.js';
 import { showToast } from './file-operations.js';
 import { AUDIO_EFFECTS, VIDEO_EFFECTS } from './effects.js';
+import { el, createSVG } from './dom-utils.js';
 
 const PRESETS = {
     'podcast-voice': {
@@ -39,61 +41,54 @@ const PRESETS = {
         type: 'audio',
         effects: [
             { id: 'compressor', params: { ratio: 20 } },
-            { id: 'equalizer', params: { high: 1.2, low: 0.8 } } // Mock param
+            { id: 'equalizer', params: { high: 1.2, low: 0.8 } }
         ]
     }
 };
 
 export function showPresetsPanel() {
-    const panel = document.createElement('div');
-    panel.className = 'side-panel presets-panel';
-    panel.innerHTML = `
-        <div class="panel-header">
-            <h4>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="3" width="7" height="7"></rect>
-                    <rect x="14" y="14" width="7" height="7"></rect>
-                    <rect x="3" y="14" width="7" height="7"></rect>
-                </svg>
-                Biblioteca de Presets
-            </h4>
-            <button class="btn-close">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-            </button>
-        </div>
-        
-        <div class="panel-content">
-            <div class="presets-grid">
-                ${Object.entries(PRESETS).map(([key, preset]) => `
-                    <div class="preset-card" data-key="${key}">
-                        <div class="preset-icon">${preset.icon}</div>
-                        <div class="preset-name">${preset.name}</div>
-                        <div class="preset-type">${preset.type === 'audio' ? 'Áudio' : 'Vídeo'}</div>
-                        <button class="btn-apply-preset">Aplicar</button>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    `;
+    const panel = el('div', { className: 'side-panel presets-panel' });
 
-    document.body.appendChild(panel);
-
-    // Close
-    panel.querySelector('.btn-close').addEventListener('click', () => panel.remove());
-
-    // Apply
-    panel.querySelectorAll('.btn-apply-preset').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const card = e.target.closest('.preset-card');
-            const key = card.dataset.key;
-            applyPreset(key);
-            showToast(`Preset "${PRESETS[key].name}" aplicado!`, 'success', 2000);
-        });
+    // HEADER
+    const header = el('div', { className: 'panel-header' }, [
+        el('h4', {}, [
+            createSVG('0 0 24 24', [], { width: 20, height: 20, fill: 'none', stroke: 'currentColor', strokeWidth: 2 }),
+            el('span', { textContent: ' Biblioteca de Presets' })
+        ]),
+        el('button', { className: 'btn-close', onClick: () => panel.remove() }, [
+            createSVG('0 0 24 24', ['M18 6L6 18', 'M6 6l12 12'], { width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2 })
+        ])
+    ]);
+    // Add rects to header icon
+    const headerSvg = header.querySelector('h4 svg');
+    [[3, 3], [14, 3], [14, 14], [3, 14]].forEach(([x, y]) => {
+        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        r.setAttribute('x', String(x)); r.setAttribute('y', String(y));
+        r.setAttribute('width', '7'); r.setAttribute('height', '7');
+        headerSvg.appendChild(r);
     });
+
+    panel.appendChild(header);
+
+    // CONTENT
+    const grid = el('div', { className: 'presets-grid' });
+    Object.entries(PRESETS).forEach(([key, preset]) => {
+        const card = el('div', { className: 'preset-card', 'data-key': key }, [
+            el('div', { className: 'preset-icon', textContent: preset.icon }),
+            el('div', { className: 'preset-name', textContent: preset.name }),
+            el('div', { className: 'preset-type', textContent: preset.type === 'audio' ? 'Áudio' : 'Vídeo' }),
+            el('button', {
+                className: 'btn-apply-preset', textContent: 'Aplicar', onClick: () => {
+                    applyPreset(key);
+                    showToast(`Preset "${PRESETS[key].name}" aplicado!`, 'success', 2000);
+                }
+            })
+        ]);
+        grid.appendChild(card);
+    });
+
+    panel.appendChild(el('div', { className: 'panel-content' }, [grid]));
+    document.body.appendChild(panel);
 }
 
 function applyPreset(key) {
@@ -113,14 +108,10 @@ function applyPreset(key) {
         return;
     }
 
-    // Aplica os efeitos
     preset.effects.forEach(eff => {
         if (preset.type === 'audio' && AUDIO_EFFECTS[eff.id]) {
             AUDIO_EFFECTS[eff.id].apply(clipId);
-            // Note: In a real impl, we would pass params too. 
-            // Currently our effect.apply() mostly uses defaults or simple params.
         } else if (preset.type === 'video' && VIDEO_EFFECTS[eff.id]) {
-            // Mapping specific params if possible
             if (eff.id === 'saturation') VIDEO_EFFECTS.saturation.apply(clipId, eff.params.saturation);
             else if (eff.id === 'brightness') VIDEO_EFFECTS.brightness.apply(clipId, eff.params.brightness, eff.params.contrast);
             else VIDEO_EFFECTS[eff.id].apply(clipId);

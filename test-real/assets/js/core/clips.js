@@ -20,7 +20,7 @@ const elements = {
     // Timeline
     timeline: document.getElementById('timeline'),
     videoTrack: document.getElementById('videoTrack'),
-    audioTrack: document.getElementById('audioTrack'),
+    audioTrack: document.getElementById('audio-a'),
     playhead: document.getElementById('playhead'),
     canvasWaveform: document.getElementById('waveform'),
 

@@ -3,7 +3,7 @@
  * Gerencia a comunicação com o backend e o fluxo de múltiplos estágios do modal.
  */
 
-import { state, notifyChange, getProjectDuration } from './state.js';
+import { state, notifyChange, getProjectDuration, getInterpolatedTransform } from './state.js';
 
 let currentAbortController = null;
 
@@ -142,7 +142,8 @@ export async function handleBatchExport(preset) {
     const toastModule = await import('./file-operations.js');
     const showToast = toastModule.showToast;
 
-    const videoClips = state.clips.filter(c => c.type.includes('video') || c.type.includes('audio'));
+    // FILTRA apenas clips de vídeo (ignora Audio L/R duplicados)
+    const videoClips = state.clips.filter(c => c.type && c.type.includes('video'));
     if (videoClips.length === 0) {
         showToast('Nenhum clipe para exportar.', 'error');
         return;
@@ -173,6 +174,9 @@ export async function handleBatchExport(preset) {
         if (percentageText) percentageText.innerText = `${totalProgress}%`;
 
         try {
+            const fillMode = document.getElementById('exportFillMode')?.value || 'pad';
+            const useGPU = document.getElementById('checkUseGPU')?.checked ?? true;
+
             const response = await fetch('api/export.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -183,6 +187,8 @@ export async function handleBatchExport(preset) {
                         ...(state.projectSettings || {}),
                         quality,
                         format,
+                        fillMode,
+                        useGPU,
                         isSingleClip: true
                     }
                 }),
@@ -206,9 +212,16 @@ export async function handleBatchExport(preset) {
     }
 
     if (!currentAbortController?.signal.aborted) {
-        showExportStage('success');
-        if (document.getElementById('exportResultText')) {
-            document.getElementById('exportResultText').innerText = `Batch export concluído! (Arquivos expiram em 30min)`;
+        // Verifica se houve algum erro nos clipes antes de mostrar sucesso
+        const hasErrors = document.querySelectorAll('.toast-error').length > 0;
+        if (!hasErrors) {
+            showExportStage('success');
+            if (document.getElementById('exportResultText')) {
+                document.getElementById('exportResultText').innerText = `Batch export concluído! (Arquivos expiram em 30min)`;
+            }
+        } else {
+            showExportStage('settings');
+            showToast('Batch export finalizado com erros. Verifique os alertas.', 'warning');
         }
     }
 }
@@ -229,12 +242,13 @@ export async function handleExportProcess(preset) {
     const timerElapsed = document.getElementById('exportTimerElapsed');
     const timerRemaining = document.getElementById('exportTimerRemaining');
 
-    // Thumbnail Preview
+    // Thumbnail Preview & Visor Video
     const thumbnailEl = document.getElementById('exportThumbnail');
-    if (thumbnailEl && state.clips.length > 0) {
-        const firstClip = state.clips[0];
-        thumbnailEl.style.backgroundImage = `url('${firstClip.thumbnail || firstClip.src}')`;
-    }
+    const visorCanvas = document.getElementById('exportCanvasVisor');
+    if (thumbnailEl) thumbnailEl.style.display = 'none';
+    if (visorCanvas) visorCanvas.style.display = 'block';
+
+    const jobId = 'job_' + Date.now();
 
     // Update Details
     document.getElementById('renderInfoText').innerText = `${fileName} - ${preset.toUpperCase()}`;
@@ -244,6 +258,10 @@ export async function handleExportProcess(preset) {
     if (document.getElementById('renderDetailFormat')) {
         document.getElementById('renderDetailFormat').innerText = `Formato: ${format.toUpperCase()}`;
     }
+
+    if (progressBar) progressBar.style.setProperty('width', '5%');
+    if (percentageText) percentageText.innerText = '5%';
+    if (statusText) statusText.innerText = 'Preparando arquivos e iniciando FFmpeg...';
 
     // Previsão de Tamanho baseada na qualidade e duração
     const duration = getProjectDuration() || 60;
@@ -260,23 +278,44 @@ export async function handleExportProcess(preset) {
     if (statusText) statusText.innerText = 'Preparando FFmpeg (Aceleração GPU solicitada)...';
 
     const startTime = Date.now();
-    let timerInterval = setInterval(() => {
+    const totalDuration = getProjectDuration() || 60;
+
+    let timerInterval = setInterval(async () => {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const h = Math.floor(elapsed / 3600).toString().padStart(2, '0');
         const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, '0');
         const s = (elapsed % 60).toString().padStart(2, '0');
         if (timerElapsed) timerElapsed.innerText = `${h}:${m}:${s}`;
 
-        // Estimativa simples
-        const progressStr = progressBar.style.getPropertyValue('width') || '5%';
-        const progress = parseFloat(progressStr) / 100;
-        if (progress > 0.1 && timerRemaining) {
-            const totalEst = elapsed / progress;
-            const remaining = Math.max(0, Math.floor(totalEst - elapsed));
-            const rh = Math.floor(remaining / 3600).toString().padStart(2, '0');
-            const rm = Math.floor((remaining % 3600) / 60).toString().padStart(2, '0');
-            const rs = (remaining % 60).toString().padStart(2, '0');
-            timerRemaining.innerText = `${rh}:${rm}:${rs}`;
+        // POLLLING DO PROGRESSO REAL
+        try {
+            const progRes = await fetch(`api/progress.php?job_id=${jobId}`);
+            const progData = await progRes.json();
+
+            if (progData.status !== 'waiting') {
+                const currentTime = parseFloat(progData.time || 0);
+                const realProgress = Math.min(1, currentTime / totalDuration);
+                const displayPercentage = Math.round(realProgress * 100);
+
+                if (progressBar) progressBar.style.setProperty('width', `${displayPercentage}%`);
+                if (percentageText) percentageText.innerText = `${displayPercentage}%`;
+
+                // Sincroniza o visor de canvas com o progresso real
+                if (visorCanvas) {
+                    drawVisor(visorCanvas, currentTime);
+                }
+
+                if (realProgress > 0.05 && timerRemaining) {
+                    const totalEst = elapsed / realProgress;
+                    const remaining = Math.max(0, Math.floor(totalEst - elapsed));
+                    const rh = Math.floor(remaining / 3600).toString().padStart(2, '0');
+                    const rm = Math.floor((remaining % 3600) / 60).toString().padStart(2, '0');
+                    const rs = (remaining % 60).toString().padStart(2, '0');
+                    timerRemaining.innerText = `${rh}:${rm}:${rs}`;
+                }
+            }
+        } catch (e) {
+            // Silently ignore polling errors to not block the render
         }
     }, 1000);
 
@@ -284,32 +323,46 @@ export async function handleExportProcess(preset) {
 
     try {
         const useGPU = document.getElementById('checkUseGPU')?.checked ?? true;
+        const fillMode = document.getElementById('exportFillMode')?.value || 'pad';
+
         const settings = {
             width: 1920, height: 1080, fps: 30, sampleRate: 44100,
             ...(state.projectSettings || {}),
             quality: quality,
             formatCode: format,
-            useGPU: useGPU
+            useGPU: useGPU,
+            fillMode: fillMode
         };
+
+        // Filtra APENAS clips de vídeo (ignora Audio L/R duplicados)
+        const exportClips = state.clips
+            .filter(c => c.type && c.type.includes('video'))
+            .map(c => ({
+                ...c,
+                src: c.serverSrc || c.src,
+                serverSrc: c.serverSrc || null
+            }));
+
+        if (exportClips.length === 0) {
+            throw new Error('Nenhum clip de vídeo na timeline para exportar.');
+        }
+
+        if (statusText) statusText.innerText = useGPU ? 'GPU Renderizando em Alta Velocidade...' : 'Processando via CPU...';
 
         const response = await fetch('api/export.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                clips: state.clips.map(c => ({
-                    ...c,
-                    src: c.serverSrc || c.src,
-                    serverSrc: c.serverSrc || null
-                })),
+                clips: exportClips,
                 project: fileName,
-                settings: settings
+                settings: settings,
+                job_id: jobId
             }),
             signal: currentAbortController.signal
         });
 
         if (progressBar) progressBar.style.setProperty('width', '60%');
         if (percentageText) percentageText.innerText = '60%';
-        if (statusText) statusText.innerText = useGPU ? 'GPU Renderizando em Alta Velocidade...' : 'Processando via CPU...';
 
         // Validação robusta de JSON (Evita travar se vier HTML/Erro do PHP)
         const contentType = response.headers.get("content-type");
@@ -325,6 +378,9 @@ export async function handleExportProcess(preset) {
             if (progressBar) progressBar.style.setProperty('width', '100%');
             if (percentageText) percentageText.innerText = '100%';
 
+            const visorVideo = document.getElementById('exportVideoVisor');
+            if (visorVideo) visorVideo.pause();
+
             const exportResult = {
                 job_id: result.job_id || Date.now(),
                 video_url: result.video_url,
@@ -335,7 +391,20 @@ export async function handleExportProcess(preset) {
             showExportStage('success');
             setupModalActions(exportResult);
         } else {
-            throw new Error(result.message || 'Erro no servidor: Verifique se os arquivos de mídia foram sincronizados.');
+            // Mostra debug info completo no console
+            let errorMsg = result.message || 'Erro no servidor';
+            if (result.debug) {
+                console.error('[Export Debug] Paths:', result.debug);
+                console.error('[Export Debug] Uploads:', result.uploadsContents);
+            }
+            if (result.log) {
+                console.error('[FFmpeg Log]', result.log.join('\n'));
+                errorMsg += ' — Verifique o console (F12) para detalhes do FFmpeg.';
+            }
+            if (result.debug_cmd) {
+                console.error('[FFmpeg CMD]', result.debug_cmd);
+            }
+            throw new Error(errorMsg);
         }
 
     } catch (err) {
@@ -417,4 +486,67 @@ function setupModalActions(result) {
     btnGDrive?.addEventListener('click', cloudHandler('Google Drive'));
     btnDropbox?.addEventListener('click', cloudHandler('Dropbox'));
     btnOneDrive?.addEventListener('click', cloudHandler('OneDrive'));
+}
+
+/**
+ * Desenha o estado atual da timeline em um canvas de visor.
+ */
+async function drawVisor(canvas, time) {
+    const ctx = canvas.getContext('2d');
+    const w = state.projectSettings?.width || 1920;
+    const h = state.projectSettings?.height || 1080;
+
+    // Sincroniza tamanho do canvas se necessário
+    if (canvas.width !== w) {
+        canvas.width = w;
+        canvas.height = h;
+    }
+
+    // Limpa fundo
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, w, h);
+
+    // Filtra clipes ativos no tempo
+    const activeClips = state.clips.filter(c =>
+        time >= c.start && time < (c.start + c.duration) && !c.offline
+    );
+
+    // 1. Desenha Vídeos
+    for (const clip of activeClips) {
+        if (clip.type.includes('video')) {
+            // No visor de render fazemos um desenho simples baseado no <video> principal escondido
+            // para não sobrecarregar o hardware durante a codificação real no servidor.
+            const mainVideo = state.videoElement || document.getElementById('previewVideo');
+            if (mainVideo) {
+                // Sincroniza o vídeo oculto apenas se necessário para o quadro atual
+                const timeInClip = (clip.offset || 0) + (time - clip.start);
+                if (Math.abs(mainVideo.currentTime - timeInClip) > 0.1) {
+                    mainVideo.currentTime = timeInClip;
+                }
+
+                const t = getInterpolatedTransform(clip, time);
+                ctx.save();
+                ctx.globalAlpha = t.opacity;
+                ctx.translate(w / 2 + t.x, h / 2 + t.y);
+                ctx.rotate(t.rotate * Math.PI / 180);
+                ctx.scale(t.scale, t.scale);
+                ctx.drawImage(mainVideo, -w / 2, -h / 2, w, h);
+                ctx.restore();
+            }
+        }
+    }
+
+    // 2. Desenha Textos
+    for (const clip of activeClips) {
+        if (clip.type.includes('text')) {
+            ctx.save();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 80px Inter, Arial';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 10;
+            ctx.fillText(clip.content || 'Live-Cut', w / 2, h / 2);
+            ctx.restore();
+        }
+    }
 }

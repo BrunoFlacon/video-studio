@@ -1,83 +1,79 @@
 // transcription.js
 // Ferramenta de Transcrição usando OpenAI Whisper API
+// CSP-Safe: Construção via DOM API (zero innerHTML)
 
 import { state } from './state.js';
 import { showToast } from './file-operations.js';
+import { el, createSVG } from './dom-utils.js';
 
 export class TranscriptionManager {
     static async showTranscriptionPanel() {
-        // Remover painel anterior se existir
         document.querySelector('.transcription-panel')?.remove();
 
-        const modal = document.createElement('div');
-        modal.className = 'side-panel transcription-panel';
-
-        // Recupera API Key salva
+        const modal = el('div', { className: 'side-panel transcription-panel' });
         const apiKey = localStorage.getItem('openai_api_key') || '';
 
-        modal.innerHTML = `
-            <div class="panel-header">
-                <h4>🎙️ Transcrição (AI)</h4>
-                <button class="btn-close" name="close_transcription">✕</button>
-            </div>
+        // HEADER
+        const header = el('div', { className: 'panel-header' }, [
+            el('h4', { textContent: '🎙️ Transcrição (AI)' }),
+            el('button', { className: 'btn-close', onClick: () => modal.remove() }, '✕')
+        ]);
+        modal.appendChild(header);
 
-            <div class="panel-content">
-                <div class="alert-box mb-20">
-                    <strong>Nota:</strong> Esta ferramenta usa a API OpenAI Whisper para precisão máxima. É necessário uma chave de API.
-                </div>
+        // CONTENT
+        const content = el('div', { className: 'panel-content' }, [
+            el('div', { className: 'alert-box mb-20' }, [
+                el('strong', { textContent: 'Nota:' }),
+                el('span', { textContent: ' Esta ferramenta usa a API OpenAI Whisper para precisão máxima. É necessário uma chave de API.' })
+            ]),
 
-                <div class="form-group">
-                    <label for="apiKey">API Key (OpenAI):</label>
-                    <input type="password" id="apiKey" name="openai_api_key" class="panel-input" value="${apiKey}" placeholder="sk-..." />
-                </div>
+            el('div', { className: 'form-group' }, [
+                el('label', { htmlFor: 'apiKey', textContent: 'API Key (OpenAI):' }),
+                el('input', { type: 'password', id: 'apiKey', className: 'panel-input', value: apiKey, placeholder: 'sk-...' })
+            ]),
 
-                <div class="form-group">
-                    <label for="transcribe-clip-select">Selecione o Clip:</label>
-                    <select id="transcribe-clip-select" name="transcribe_clip" class="panel-select">
-                        ${state.clips.filter(c => c.type === 'audio' || c.type === 'video').length === 0
-                ? '<option value="">Nenhum clip disponível</option>'
-                : state.clips.filter(c => c.type === 'audio' || c.type === 'video').map(c => `
-                                <option value="${c.id}" ${c.id === state.selectedClipId ? 'selected' : ''}>${c.name}</option>
-                            `).join('')}
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="language">Idioma:</label>
-                    <select id="language" name="transcribe_language" class="panel-select">
-                        <option value="pt">Português</option>
-                        <option value="en">Inglês</option>
-                        <option value="es">Espanhol</option>
-                    </select>
-                </div>
+            el('div', { className: 'form-group' }, [
+                el('label', { htmlFor: 'transcribe-clip-select', textContent: 'Selecione o Clip:' }),
+                el('select', { id: 'transcribe-clip-select', className: 'panel-select' },
+                    state.clips.filter(c => c.type === 'audio' || c.type === 'video').length === 0
+                        ? [el('option', { value: '', textContent: 'Nenhum clip disponível' })]
+                        : state.clips.filter(c => c.type === 'audio' || c.type === 'video').map(c =>
+                            el('option', { value: c.id, textContent: c.name, ...(c.id === state.selectedClipId ? { selected: 'selected' } : {}) })
+                        )
+                )
+            ]),
 
-                <div class="transcription-loading text-center mt-16" style="display: none;">
-                    <div class="spinner"></div>
-                    <p class="mt-16 text-muted">Enviando e processando áudio...</p>
-                    <small class="text-muted">Isso pode levar alguns instantes dependendo do tamanho.</small>
-                </div>
+            el('div', { className: 'form-group' }, [
+                el('label', { htmlFor: 'language', textContent: 'Idioma:' }),
+                el('select', { id: 'language', className: 'panel-select' }, [
+                    el('option', { value: 'pt', textContent: 'Português' }),
+                    el('option', { value: 'en', textContent: 'Inglês' }),
+                    el('option', { value: 'es', textContent: 'Espanhol' })
+                ])
+            ]),
 
-                <button class="btn-primary btn-full" id="btn-start-transcribe">
-                    Iniciar Transcrição
-                </button>
+            el('div', { className: 'transcription-loading text-center mt-16', style: { display: 'none' } }, [
+                el('div', { className: 'spinner' }),
+                el('p', { className: 'mt-16 text-muted', textContent: 'Enviando e processando áudio...' }),
+                el('small', { className: 'text-muted', textContent: 'Isso pode levar alguns instantes dependendo do tamanho.' })
+            ]),
 
-                <div class="transcription-result mt-16" style="display: none;">
-                    <label for="resultText">Resultado:</label>
-                    <textarea id="resultText" name="transcription_result" class="panel-textarea mt-16"></textarea>
-                    
-                    <div class="result-actions mt-16 flex-between" style="gap: 10px;">
-                        <button class="btn-secondary flex-1" id="btn-copy" name="copy_transcription">Copiar</button>
-                        <button class="btn-primary flex-1" id="btn-create-captions" name="create_captions">Criar Legendas</button>
-                    </div>
-                </div>
-            </div>
-        `;
+            el('button', { className: 'btn-primary btn-full', id: 'btn-start-transcribe', textContent: 'Iniciar Transcrição' }),
+
+            el('div', { className: 'transcription-result mt-16', style: { display: 'none' } }, [
+                el('label', { htmlFor: 'resultText', textContent: 'Resultado:' }),
+                el('textarea', { id: 'resultText', className: 'panel-textarea mt-16' }),
+                el('div', { className: 'result-actions mt-16 flex-between', style: { gap: '10px' } }, [
+                    el('button', { className: 'btn-secondary flex-1', id: 'btn-copy', textContent: 'Copiar' }),
+                    el('button', { className: 'btn-primary flex-1', id: 'btn-create-captions', textContent: 'Criar Legendas' })
+                ])
+            ])
+        ]);
+        modal.appendChild(content);
 
         document.body.appendChild(modal);
 
         // Handlers
-        modal.querySelector('.btn-close').addEventListener('click', () => modal.remove());
-
         const btnStart = modal.querySelector('#btn-start-transcribe');
         btnStart.addEventListener('click', async () => {
             const key = modal.querySelector('#apiKey').value.trim();
@@ -93,35 +89,26 @@ export class TranscriptionManager {
                 return;
             }
 
-            // Salva a key para facilitar
             localStorage.setItem('openai_api_key', key);
-
-            // Obtém o clip
             const clip = state.clips.find(c => c.id === clipId);
             if (!clip) return;
 
-            // UI Loading
             btnStart.disabled = true;
             modal.querySelector('.transcription-loading').style.display = 'block';
 
             try {
-                // 1. Fetch do Blob
                 const response = await fetch(clip.src);
                 const blob = await response.blob();
 
-                // 2. Prepara FormData
                 const formData = new FormData();
-                formData.append('file', blob, 'audio.mp3'); // A API aceita vários formatos, .mp3/.wav genérico funciona
+                formData.append('file', blob, 'audio.mp3');
                 formData.append('model', 'whisper-1');
                 formData.append('language', lang);
-                formData.append('response_format', 'verbose_json'); // Importante para timestamps!
+                formData.append('response_format', 'verbose_json');
 
-                // 3. Envia para OpenAI
                 const apiRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${key}`
-                    },
+                    headers: { 'Authorization': `Bearer ${key}` },
                     body: formData
                 });
 
@@ -131,20 +118,12 @@ export class TranscriptionManager {
                 }
 
                 const data = await apiRes.json();
-
-                // 4. Mostra resultado
                 modal.querySelector('.transcription-loading').style.display = 'none';
                 modal.querySelector('.transcription-result').style.display = 'block';
-
-                // Exibe texto completo
-                const textArea = modal.querySelector('#resultText');
-                textArea.value = data.text;
-
-                // Salva segmentos brutos para criação de legendas
+                modal.querySelector('#resultText').value = data.text;
                 modal.dataset.segments = JSON.stringify(data.segments || []);
 
                 showToast('Transcrição concluída com sucesso!', 'success');
-
             } catch (error) {
                 showToast(`Erro: ${error.message}`, 'error', 4000);
                 modal.querySelector('.transcription-loading').style.display = 'none';
@@ -152,7 +131,11 @@ export class TranscriptionManager {
             }
         });
 
-        // Criar Legendas (Overlay)
+        modal.querySelector('#btn-copy').addEventListener('click', () => {
+            const text = modal.querySelector('#resultText').value;
+            navigator.clipboard.writeText(text).then(() => showToast('Copiado para a área de transferência', 'success'));
+        });
+
         modal.querySelector('#btn-create-captions').addEventListener('click', () => {
             const segmentsStr = modal.dataset.segments;
             if (!segmentsStr) {
@@ -170,23 +153,8 @@ export class TranscriptionManager {
                 import('./text-layer.js').then(mod => {
                     let count = 0;
                     segments.forEach(seg => {
-                        // Cria um texto para cada segmento
-                        // Ajusta o tempo: clip.start + tempo_do_segmento
-                        // Nota: text-layer.js atual cria no meio da tela.
-                        // Idealmente passariamos o tempo exato para timeline.
-                        // Como nosso sistema de overlay atual é simples (visual), vamos apenas criar os elementos
-                        // Para uma legenda real sincronizada, precisaríamos de uma track de "Legendas".
-
-                        // Por enquanto, vamos criar apenas os textos no "banco" de overlays com timestamp
-                        // O text-layer.js precisa suportar start/duration.
-                        // Vamos adaptar chamando direto a criação no state se necessario ou usando a func publica
-
-                        // Workaround: Criar overlays "visuais"
-                        // Usuário terá que ajustar posição.
-                        // Se tiver muitos segmentos, cria apenas os primeiros 5 para não poluir
                         if (count < 20) {
                             mod.addTextOverlay(overlayLayer, seg.text.trim());
-                            // TODO: Atualizar o overlay recém criado com start/duration correto
                             const lastOverlay = state.overlays[state.overlays.length - 1];
                             if (lastOverlay) {
                                 lastOverlay.start = clipStart + seg.start;
@@ -195,15 +163,9 @@ export class TranscriptionManager {
                             count++;
                         }
                     });
-
-                    showToast(`${count} legendas criadas (limitado a 20 para performance). Ajuste na timeline.`, 'success', 3000);
-                    // Força render timeline para mostrar os "clips" de texto se a timeline suportar
-                    // Atualmente overlays são globais? state.overlays
-                    // Precisamos garantir que o renderizador mostre.
-
+                    showToast(`${count} legendas criadas. Ajuste na timeline.`, 'success', 3000);
                     modal.remove();
                 });
-
             } catch (e) {
                 showToast('Erro ao processar legendas', 'error');
             }

@@ -211,6 +211,12 @@ export async function analyzeAudioChannels(url) {
  */
 export async function getFastMetadata(url, type) {
     return new Promise((resolve) => {
+        const isImage = type.includes('image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+        if (isImage) {
+            resolve({ duration: 5 });
+            return;
+        }
+
         const temp = document.createElement(type.includes('audio') ? 'audio' : 'video');
         temp.preload = 'metadata';
         temp.src = url;
@@ -219,11 +225,11 @@ export async function getFastMetadata(url, type) {
             temp.onloadedmetadata = null;
             temp.onerror = null;
             temp.src = "";
-            temp.load();
+            try { temp.load(); } catch (e) { }
         };
 
         temp.onloadedmetadata = () => {
-            const duration = temp.duration;
+            const duration = temp.duration || 10;
             cleanup();
             resolve({ duration });
         };
@@ -239,6 +245,121 @@ export async function getFastMetadata(url, type) {
             resolve({ duration: 10 });
         }, 5000);
     });
+}
+
+/**
+ * AUDIO POOL - Gerenciamento de instâncias de áudio para sincronia.
+ */
+const audioPool = new Map(); // [clipId]: { el, src }
+
+/**
+ * Inicializa o pool de áudio (Pode ser chamado na inicialização do editor)
+ */
+export function initAudioPool() {
+    if (!window.audioCtx) {
+        window.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+/**
+ * Sincroniza áudios secundários (trilhas de áudio) com o tempo global e estado de reprodução.
+ */
+export function syncSecondaryAudios(globalTime, isPlaying) {
+    if (!window.state || !window.state.clips) return;
+
+    // Filtra apenas clips de áudio (ou vídeo que deve tocar apenas áudio em trilhas secundárias)
+    const audioClips = window.state.clips.filter(c =>
+        (c.type?.includes('audio') || c.trackId?.startsWith('audio')) && !c.offline
+    );
+
+    // Itera sobre todos os clips de áudio do estado
+    audioClips.forEach(clip => {
+        // Otimização: Uso de < no final para evitar que clipes adjacentes toquem juntos no mesmo milissegundo
+        const isVisible = globalTime >= clip.start && globalTime < (clip.start + clip.duration);
+
+        // Se o clipe deve estar tocando agora
+        if (isVisible && isPlaying) {
+            let entry = audioPool.get(clip.id);
+
+            // Cria elemento se não existir ou se a fonte mudou
+            if (!entry || entry.src !== clip.src) {
+                if (entry && entry.el) entry.el.pause();
+
+                const el = new Audio(clip.src);
+                el.muted = false;
+                el.crossOrigin = "anonymous";
+                el.volume = clip.volume !== undefined ? clip.volume : 1.0;
+
+                // Roteamento de Canal (Stereo Separation) via Web Audio API
+                let nodes = null;
+                if (window.audioCtx && (clip.channel === 'left' || clip.channel === 'right')) {
+                    try {
+                        const source = window.audioCtx.createMediaElementSource(el);
+                        const splitter = window.audioCtx.createChannelSplitter(2);
+                        const merger = window.audioCtx.createChannelMerger(2);
+
+                        source.connect(splitter);
+                        const chIdx = clip.channel === 'right' ? 1 : 0;
+                        // Mapeia o canal selecionado para ambas as saídas (Mono Dual)
+                        splitter.connect(merger, chIdx, 0);
+                        splitter.connect(merger, chIdx, 1);
+                        merger.connect(window.audioCtx.destination);
+                        nodes = { source, splitter, merger };
+                    } catch (e) {
+                        console.warn("AudioContext routing failed, falling back to basic audio", e);
+                    }
+                }
+
+                entry = { el, src: clip.src, nodes };
+                audioPool.set(clip.id, entry);
+            }
+
+            const targetTime = (clip.offset || 0) + (globalTime - clip.start);
+
+            // Sincronia de Tempo (Margem de 150ms para evitar picotamento por jitter)
+            if (Math.abs(entry.el.currentTime - targetTime) > 0.15) {
+                entry.el.currentTime = targetTime;
+            }
+
+            // Garante que está tocando com proteção contra AbortError
+            if (isPlaying && entry.el.paused) {
+                if (!entry.isPlaying) {
+                    entry.isPlaying = true;
+                    entry.el.play()
+                        .then(() => { entry.isPlaying = false; })
+                        .catch(e => {
+                            entry.isPlaying = false;
+                            if (e.name !== 'AbortError') console.warn("Audio play blocked", e);
+                        });
+                }
+            } else if (!isPlaying && !entry.el.paused) {
+                entry.el.pause();
+            }
+        } else {
+            // Se o clipe NÃO deve estar tocando
+            const entry = audioPool.get(clip.id);
+            if (entry && !entry.el.paused) {
+                entry.el.pause();
+            }
+        }
+    });
+
+    // Limpeza de cache (Garbage Collection do Pool)
+    // Remove do pool elementos de clips que não existem mais no estado
+    const currentClipIds = new Set(window.state.clips.map(c => c.id));
+    for (const [clipId, entry] of audioPool.entries()) {
+        if (!currentClipIds.has(clipId)) {
+            entry.el.pause();
+            entry.el.src = "";
+            // Desconecta nós do AudioContext para evitar memory leak
+            if (entry.nodes) {
+                entry.nodes.source.disconnect();
+                entry.nodes.splitter.disconnect();
+                entry.nodes.merger.disconnect();
+            }
+            audioPool.delete(clipId);
+        }
+    }
 }
 
 /**

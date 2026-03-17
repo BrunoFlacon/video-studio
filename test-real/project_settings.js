@@ -1,23 +1,12 @@
 /**
- * project_settings.js - Unified Configuration File
- * Loads project-specific settings and provides defaults.
- * Now includes previous app_settings.js logic.
+ * project_settings.js - Local fallback for external tools
+ * This file is here to prevent 404 errors in the browser console.
+ * The application configuration is managed by config.js and editor.php.
  */
-window.projectSettings = window.projectSettings || {};
-
-// Merge with existing or default values
-Object.assign(window.projectSettings, {
+window.projectSettings = window.projectSettings || {
     version: "2.1.0-stable",
-    lastRefined: new Date().toISOString(),
-    mode: "secure-fallback",
-    explorer: "native",
-    // Default Fallbacks if PHP doesn't inject them
-    width: window.projectSettings.width || 1920,
-    height: window.projectSettings.height || 1080,
-    fps: window.projectSettings.fps || 30,
-    sampleRate: window.projectSettings.sampleRate || 44100
-});
-
-// Backward Compatibility
-window.LIVE_CUT_PROJECT_SETTINGS = window.projectSettings;
-// console.log("[Config] Project Settings loaded:", window.projectSettings);
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    sampleRate: 44100
+};

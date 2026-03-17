@@ -1,7 +1,9 @@
 // file-operations.js
 // Gerencia operações de arquivo: auto-save, projetos recentes, importar/exportar
+// CSP-Safe: Construção via DOM API (zero innerHTML)
 
 import { state, saveState, loadState } from './state.js';
+import { el, createSVG } from './dom-utils.js';
 
 // ==================== CONSTANTS ====================
 const RECENT_PROJECTS_KEY = 'live_cut_recent_projects';
@@ -12,15 +14,11 @@ const MAX_RECENT_PROJECTS = 20;
 let autoSaveInterval = null;
 
 export function startAutoSave() {
-    // Clear existing interval if any
     if (autoSaveInterval) {
         clearInterval(autoSaveInterval);
     }
-
-    // Start auto-save every 5 minutes
     autoSaveInterval = setInterval(() => {
         saveState();
-
         showToast('Projeto salvo automaticamente', 'success', 2000);
     }, AUTO_SAVE_INTERVAL);
 }
@@ -29,7 +27,6 @@ export function stopAutoSave() {
     if (autoSaveInterval) {
         clearInterval(autoSaveInterval);
         autoSaveInterval = null;
-
     }
 }
 
@@ -37,25 +34,17 @@ export function stopAutoSave() {
 
 export function addToRecentProjects(projectName, projectData = null) {
     let recent = JSON.parse(localStorage.getItem(RECENT_PROJECTS_KEY) || '[]');
-
-    // Check if project already exists
     const existingIndex = recent.findIndex(p => p.name === projectName);
     if (existingIndex !== -1) {
-        // Move to top
         recent.splice(existingIndex, 1);
     }
-
-    // Add new project at beginning
     recent.unshift({
         name: projectName,
         timestamp: Date.now(),
         clipsCount: projectData?.clips?.length || state.clips.length,
         duration: projectData?.duration || state.duration
     });
-
-    // Keep only last 20
     recent = recent.slice(0, MAX_RECENT_PROJECTS);
-
     localStorage.setItem(RECENT_PROJECTS_KEY, JSON.stringify(recent));
 }
 
@@ -65,70 +54,56 @@ export function getRecentProjects() {
 
 export function showRecentProjectsModal() {
     const recent = getRecentProjects();
-
     if (recent.length === 0) {
         showToast('Nenhum projeto recente encontrado', 'info', 3000);
         return;
     }
 
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-        <div class="modal-content recent-projects-modal">
-            <h3>📂 Projetos Recentes</h3>
-            <div class="recent-projects-list">
-                ${recent.map((proj, idx) => `
-                    <div class="recent-project-item" data-index="${idx}">
-                        <div class="project-info">
-                            <span class="project-name">${escapeHtml(proj.name)}</span>
-                            <div class="project-meta">
-                                <span class="project-clips">${proj.clipsCount || 0} clips</span>
-                                <span class="project-date">${formatDate(proj.timestamp)}</span>
-                            </div>
-                        </div>
-                        <button class="btn-icon project-delete" data-index="${idx}" title="Remover">
-                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 6L6 18M6 6l12 12"/>
-                            </svg>
-                        </button>
-                    </div>
-                `).join('')}
-            </div>
-            <div class="modal-actions">
-                <button class="btn-secondary modal-close">Fechar</button>
-            </div>
-        </div>
-    `;
+    const modal = el('div', { className: 'modal-overlay' });
+    const content = el('div', { className: 'modal-content recent-projects-modal' }, [
+        el('h3', { textContent: '📂 Projetos Recentes' })
+    ]);
 
+    const list = el('div', { className: 'recent-projects-list' });
+    recent.forEach((proj, idx) => {
+        const item = el('div', {
+            className: 'recent-project-item', 'data-index': idx, onClick: (e) => {
+                if (e.target.closest('.project-delete')) return;
+                showToast(`Carregando: ${proj.name}`, 'info', 2000);
+                modal.remove();
+            }
+        }, [
+            el('div', { className: 'project-info' }, [
+                el('span', { className: 'project-name', textContent: proj.name }),
+                el('div', { className: 'project-meta' }, [
+                    el('span', { className: 'project-clips', textContent: `${proj.clipsCount || 0} clips` }),
+                    el('span', { className: 'project-date', textContent: formatDate(proj.timestamp) })
+                ])
+            ]),
+            el('button', {
+                className: 'btn-icon project-delete',
+                title: 'Remover',
+                onClick: (e) => {
+                    e.stopPropagation();
+                    deleteRecentProject(idx);
+                    modal.remove();
+                    showRecentProjectsModal();
+                }
+            }, [
+                createSVG('0 0 24 24', ['M18 6L6 18', 'M6 6l12 12'], { width: 16, height: 16, stroke: 'currentColor', strokeWidth: 2, fill: 'none' })
+            ])
+        ]);
+        list.appendChild(item);
+    });
+
+    content.appendChild(list);
+    content.appendChild(el('div', { className: 'modal-actions' }, [
+        el('button', { className: 'btn-secondary modal-close', textContent: 'Fechar', onClick: () => modal.remove() })
+    ]));
+
+    modal.appendChild(content);
     document.body.appendChild(modal);
 
-    // Event listeners
-    modal.querySelectorAll('.recent-project-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            if (e.target.closest('.project-delete')) return; // Ignore delete button
-
-            const idx = parseInt(item.dataset.index);
-            const project = recent[idx];
-
-            // For now, just show message - full implementation would load the project
-            showToast(`Carregando: ${project.name}`, 'info', 2000);
-
-            modal.remove();
-        });
-    });
-
-    // Delete buttons
-    modal.querySelectorAll('.project-delete').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const idx = parseInt(btn.dataset.index);
-            deleteRecentProject(idx);
-            modal.remove();
-            showRecentProjectsModal(); // Refresh
-        });
-    });
-
-    modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
     });
@@ -143,81 +118,75 @@ function deleteRecentProject(index) {
 // ==================== SAVE AS DIALOG ====================
 
 export function showSaveAsDialog() {
-    const explorerType = state.projectSettings?.explorer || 'native';
-
-    // Se a preferência for usar o explorador nativo do editor (CUSTOM UI), mostrar modal.
-    // Caso contrário, poderíamos usar a File System Access API se disponível, 
-    // mas vamos simplificar: o modal atual É o "Editor Explorer".
-    // "Native" significaria que o browser lida com tudo (padrão).
     const currentName = document.getElementById('projectName')?.value || 'Projeto.xml';
 
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-        <div class="modal-content save-as-modal">
-            <h3>💾 Salvar Projeto Como</h3>
-            <div class="form-group">
-                <label for="saveAsName">Nome do Arquivo:</label>
-                <input type="text" id="saveAsName" name="save_as_name" class="modal-input" value="${escapeHtml(currentName)}" />
-            </div>
-            <div class="form-group">
-                <label for="saveAsFormat">Formato:</label>
-                <select id="saveAsFormat" name="save_as_format" class="modal-select">
-                    <option value="xml" ${state.projectSettings?.explorer === 'native' ? 'selected' : ''}>XML (Sistema Nativo)</option>
-                    <option value="json">JSON (Backup Interno)</option>
-                </select>
-            </div>
-            <div class="form-group mb-16">
-                <label class="checkbox-option">
-                    <input type="checkbox" id="checkUseCustomExplorer" name="use_custom_explorer" ${state.projectSettings?.explorer === 'editor' ? 'checked' : ''}>
-                    <div>
-                        <span>Usar Explorador do Editor</span>
-                        <small>Interface customizada para gerenciamento de arquivos.</small>
-                    </div>
-                </label>
-            </div>
-            <div class="modal-actions">
-                <button class="btn-secondary modal-cancel">Cancelar</button>
-                <button class="btn-primary modal-save">💾 Salvar</button>
-            </div>
-        </div>
-    `;
+    const modal = el('div', { className: 'modal-overlay' });
+    const content = el('div', { className: 'modal-content save-as-modal' }, [
+        el('h3', { textContent: '💾 Salvar Projeto Como' }),
 
+        el('div', { className: 'form-group' }, [
+            el('label', { htmlFor: 'saveAsName', textContent: 'Nome do Arquivo:' }),
+            el('input', { type: 'text', id: 'saveAsName', className: 'modal-input', value: currentName })
+        ]),
+
+        el('div', { className: 'form-group' }, [
+            el('label', { htmlFor: 'saveAsFormat', textContent: 'Formato:' }),
+            el('select', { id: 'saveAsFormat', className: 'modal-select' }, [
+                el('option', { value: 'xml', textContent: 'XML (Sistema Nativo)', ...(state.projectSettings?.explorer === 'native' ? { selected: 'selected' } : {}) }),
+                el('option', { value: 'json', textContent: 'JSON (Backup Interno)' })
+            ])
+        ]),
+
+        el('div', { className: 'form-group mb-16' }, [
+            el('label', { className: 'checkbox-option' }, [
+                el('input', { type: 'checkbox', id: 'checkUseCustomExplorer', checked: state.projectSettings?.explorer === 'editor' ? 'checked' : null }),
+                el('div', {}, [
+                    el('span', { textContent: 'Usar Explorador do Editor' }),
+                    el('small', { textContent: 'Interface customizada para gerenciamento de arquivos.' })
+                ])
+            ])
+        ]),
+
+        el('div', { className: 'modal-actions' }, [
+            el('button', { className: 'btn-secondary modal-cancel', textContent: 'Cancelar', onClick: () => modal.remove() }),
+            el('button', {
+                className: 'btn-primary modal-save', textContent: '💾 Salvar', onClick: () => {
+                    const name = nameInput.value.trim();
+                    const format = modal.querySelector('#saveAsFormat').value;
+                    const useCustomExplorer = modal.querySelector('#checkUseCustomExplorer')?.checked;
+
+                    if (state.projectSettings) {
+                        state.projectSettings.explorer = useCustomExplorer ? 'editor' : 'native';
+                        saveState();
+                    }
+
+                    if (!name) {
+                        showToast('Digite um nome para o arquivo', 'error', 3000);
+                        return;
+                    }
+
+                    exportProject(name, format);
+                    modal.remove();
+                }
+            })
+        ])
+    ]);
+
+    modal.appendChild(content);
     document.body.appendChild(modal);
 
     const nameInput = modal.querySelector('#saveAsName');
     nameInput.focus();
     nameInput.select();
 
-    modal.querySelector('.modal-save').addEventListener('click', () => {
-        const name = nameInput.value.trim();
-        const format = modal.querySelector('#saveAsFormat').value;
-        const useCustomExplorer = modal.querySelector('#checkUseCustomExplorer')?.checked;
-
-        if (state.projectSettings) {
-            state.projectSettings.explorer = useCustomExplorer ? 'editor' : 'native';
-            saveState();
-        }
-
-        if (!name) {
-            showToast('Digite um nome para o arquivo', 'error', 3000);
-            return;
-        }
-
-        exportProject(name, format);
-        modal.remove();
-    });
-
-    modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-    });
-
-    // Enter to save
     nameInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             modal.querySelector('.modal-save').click();
         }
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
     });
 }
 
@@ -225,17 +194,14 @@ export function showSaveAsDialog() {
 
 export function exportProject(name, format) {
     const projectState = {
-        version: '1.1', // Increment version
+        version: '1.2', // Increment version
         name: name,
         clips: state.clips,
         tracks: state.tracks,
         duration: state.duration,
         zoom: state.zoom,
         overlays: state.overlays || [],
-        markers: state.markers || [], // Adiciona marcadores ao XML
-        // Otimização: No XML, salvamos apenas as últimas 15 entradas do histórico 
-        // para manter o arquivo leve e o carregamento rápido. O histórico completo
-        // permanece no localStorage durante a sessão.
+        markers: state.markers || [],
         history: window.historyManager ? window.historyManager.stack.slice(-15).map(h => ({
             type: h.type,
             description: h.description,
@@ -257,12 +223,10 @@ export function exportProject(name, format) {
         extension = 'json';
     }
 
-    // Ensure extension
     if (!name.endsWith(`.${extension}`)) {
         name += `.${extension}`;
     }
 
-    // Create download
     const blob = new Blob([data], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -273,20 +237,16 @@ export function exportProject(name, format) {
 
     addToRecentProjects(name, projectState);
     showToast(`Projeto exportado: ${name}`, 'success', 3000);
-    // 
 }
 
 // ==================== IMPORT PROJECT ====================
 
 export async function importProject(file) {
-
-
     const ext = file.name.split('.').pop().toLowerCase();
     const text = await file.text();
 
     try {
         let projectData;
-
         switch (ext) {
             case 'xml':
                 projectData = parseXMLProject(text);
@@ -297,67 +257,38 @@ export async function importProject(file) {
             default:
                 throw new Error(`Formato não suportado: .${ext}`);
         }
-
         loadProjectData(projectData);
         addToRecentProjects(file.name, projectData);
-
         showToast(`Projeto importado: ${file.name}`, 'success', 3000);
-
-
     } catch (err) {
         showToast('Erro ao importar projeto. Verifique o formato.', 'error', 4000);
     }
 }
 
 function loadProjectData(projectData) {
-    // Clear current state
     state.clips = [];
     state.overlays = [];
+    if (projectData.clips) state.clips = projectData.clips;
+    if (projectData.tracks) state.tracks = projectData.tracks;
+    if (projectData.duration) state.duration = projectData.duration;
+    if (projectData.zoom) state.zoom = projectData.zoom;
+    if (projectData.overlays) state.overlays = projectData.overlays;
+    if (projectData.markers) state.markers = projectData.markers;
+    if (projectData.projectSettings) state.projectSettings = { ...state.projectSettings, ...projectData.projectSettings };
 
-    // Load new data
-    if (projectData.clips) {
-        state.clips = projectData.clips;
-    }
-    if (projectData.tracks) {
-        state.tracks = projectData.tracks;
-    }
-    if (projectData.duration) {
-        state.duration = projectData.duration;
-    }
-    if (projectData.zoom) {
-        state.zoom = projectData.zoom;
-    }
-    if (projectData.overlays) {
-        state.overlays = projectData.overlays;
-    }
-    if (projectData.markers) {
-        state.markers = projectData.markers;
-    }
-    if (projectData.projectSettings) {
-        state.projectSettings = { ...state.projectSettings, ...projectData.projectSettings };
-    }
-
-    // Update project name
     if (projectData.name) {
         const projectNameInput = document.getElementById('projectName');
-        if (projectNameInput) {
-            projectNameInput.value = projectData.name;
-        }
+        if (projectNameInput) projectNameInput.value = projectData.name;
     }
 
-    // Trigger re-render
     const renderEvent = new Event('render');
     document.dispatchEvent(renderEvent);
 
-    // Restore History if available
     if (projectData.history && window.historyManager) {
         window.historyManager.setHistory(projectData.history, projectData.history.length - 1);
     }
 }
 
-/**
- * Abre um modal para o usuário selecionar um novo arquivo para um clipe offline
- */
 export function relinkMedia(clipId) {
     const clip = state.clips.find(c => c.id === clipId);
     if (!clip) return;
@@ -369,19 +300,13 @@ export function relinkMedia(clipId) {
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const newUrl = URL.createObjectURL(file);
         clip.src = newUrl;
         clip.offline = false;
-
         showToast(`Mídia relincada: ${file.name}`, 'success', 2000);
         saveState();
-
-        // Dispara render através do state
-        const renderEvent = new Event('render');
-        document.dispatchEvent(renderEvent);
+        document.dispatchEvent(new Event('render'));
     };
-
     input.click();
 }
 
@@ -395,13 +320,11 @@ function stateToXML(projectState) {
     xml += `    <zoom>${projectState.zoom}</zoom>\n`;
     xml += `    <exportedAt>${projectState.exportedAt}</exportedAt>\n`;
     xml += `  </metadata>\n`;
-
     xml += `  <tracks>\n`;
     projectState.tracks.forEach(track => {
         xml += `    <track id="${escapeXml(track.id)}" type="${escapeXml(track.type)}" name="${escapeXml(track.name)}" />\n`;
     });
     xml += `  </tracks>\n`;
-
     xml += `  <clips>\n`;
     projectState.clips.forEach(clip => {
         xml += `    <clip id="${escapeXml(clip.id)}" name="${escapeXml(clip.name)}" `;
@@ -410,7 +333,6 @@ function stateToXML(projectState) {
         xml += `exportName="${escapeXml(clip.exportName || '')}" />\n`;
     });
     xml += `  </clips>\n`;
-
     xml += `  <markers>\n`;
     (projectState.markers || []).forEach(m => {
         const time = typeof m === 'number' ? m : m.time;
@@ -418,14 +340,12 @@ function stateToXML(projectState) {
         xml += `    <marker time="${time}" note="${escapeXml(note)}" />\n`;
     });
     xml += `  </markers>\n`;
-
     xml += `  <overlays>\n`;
     (projectState.overlays || []).forEach(o => {
         xml += `    <overlay id="${escapeXml(o.id)}" type="${escapeXml(o.type)}" content="${escapeXml(o.content)}" `;
         xml += `start="${o.start}" duration="${o.duration}" x="${o.x}" y="${o.y}" />\n`;
     });
     xml += `  </overlays>\n`;
-
     xml += `  <history_log>\n`;
     (projectState.history || []).forEach(h => {
         const stateStr = JSON.stringify(h.state);
@@ -434,7 +354,6 @@ function stateToXML(projectState) {
         xml += `    </action>\n`;
     });
     xml += `  </history_log>\n`;
-
     xml += `</project>`;
     return xml;
 }
@@ -442,17 +361,10 @@ function stateToXML(projectState) {
 function parseXMLProject(xmlText) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xmlText, 'text/xml');
-
-    // Check for parsing errors
     const parserError = doc.querySelector('parsererror');
-    if (parserError) {
-        throw new Error('XML inválido');
-    }
-
+    if (parserError) throw new Error('XML inválido');
     const project = doc.querySelector('project');
-    if (!project) {
-        throw new Error('Formato de projeto inválido');
-    }
+    if (!project) throw new Error('Formato de projeto inválido');
 
     const metadata = project.querySelector('metadata');
     const tracks = Array.from(project.querySelectorAll('track')).map(track => ({
@@ -460,7 +372,6 @@ function parseXMLProject(xmlText) {
         type: track.getAttribute('type'),
         name: track.getAttribute('name')
     }));
-
     const clips = Array.from(project.querySelectorAll('clip')).map(clip => ({
         id: clip.getAttribute('id'),
         name: clip.getAttribute('name'),
@@ -471,24 +382,12 @@ function parseXMLProject(xmlText) {
         type: clip.getAttribute('type'),
         trackId: clip.getAttribute('trackId'),
         exportName: clip.getAttribute('exportName') || '',
-        offline: clip.getAttribute('src')?.startsWith('blob:') // Blobs são sempre offline na importação
+        offline: clip.getAttribute('src')?.startsWith('blob:')
     }));
-
     const markers = Array.from(project.querySelectorAll('marker')).map(m => ({
         time: parseFloat(m.getAttribute('time')),
         note: m.getAttribute('note') || ''
     }));
-
-    const overlays = Array.from(project.querySelectorAll('overlay')).map(o => ({
-        id: o.getAttribute('id'),
-        type: o.getAttribute('type'),
-        content: o.getAttribute('content'),
-        start: parseFloat(o.getAttribute('start')),
-        duration: parseFloat(o.getAttribute('duration')),
-        x: parseFloat(o.getAttribute('x')),
-        y: parseFloat(o.getAttribute('y'))
-    }));
-
     const history = Array.from(project.querySelectorAll('action')).map(h => {
         const stateData = h.querySelector('state_data')?.textContent;
         return {
@@ -498,44 +397,26 @@ function parseXMLProject(xmlText) {
             state: stateData ? JSON.parse(stateData) : null
         };
     });
-
     return {
         version: project.getAttribute('version'),
         name: project.getAttribute('name'),
         duration: metadata ? parseFloat(metadata.querySelector('duration')?.textContent) : 60,
         zoom: metadata ? parseFloat(metadata.querySelector('zoom')?.textContent) : 1,
-        tracks,
-        clips,
-        markers,
-        overlays,
-        history
+        tracks, clips, markers, history
     };
 }
 
 // ==================== TOAST NOTIFICATIONS ====================
 
 export function showToast(message, type = 'info', duration = 3000) {
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-
-    const icons = {
-        success: '✅',
-        error: '❌',
-        warning: '⚠️',
-        info: 'ℹ️'
-    };
-
-    toast.innerHTML = `
-        <span class="toast-icon">${icons[type] || icons.info}</span>
-        <span class="toast-message">${escapeHtml(message)}</span>
-    `;
+    const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+    const toast = el('div', { className: `toast toast-${type}` }, [
+        el('span', { className: 'toast-icon', textContent: icons[type] || icons.info }),
+        el('span', { className: 'toast-message', textContent: message })
+    ]);
 
     document.body.appendChild(toast);
-
-    // Trigger animation
     setTimeout(() => toast.classList.add('toast-show'), 10);
-
-    // Auto-remove
     setTimeout(() => {
         toast.classList.remove('toast-show');
         setTimeout(() => toast.remove(), 300);
@@ -543,12 +424,6 @@ export function showToast(message, type = 'info', duration = 3000) {
 }
 
 // ==================== UTILITY FUNCTIONS ====================
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
 
 function escapeXml(text) {
     return String(text)
@@ -566,11 +441,9 @@ function formatDate(timestamp) {
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
-
     if (diffMins < 1) return 'Agora';
     if (diffMins < 60) return `${diffMins}min atrás`;
     if (diffHours < 24) return `${diffHours}h atrás`;
     if (diffDays < 7) return `${diffDays}d atrás`;
-
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }

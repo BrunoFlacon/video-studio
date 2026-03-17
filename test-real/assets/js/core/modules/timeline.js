@@ -482,13 +482,25 @@ function setupClipEvents(el, clip, handleL, handleR, trackEl, pxPerSec) {
                 let newStart = originalStart + deltaSec;
                 if (newStart < 0) newStart = 0;
 
-                // --- MAGNETIC SNAPPING (IMÃ) ---
+                // --- DETECÇÃO DE COLISÃO E SNAP (IMÃ) ---
+                const getCollision = (start, duration) => {
+                    const end = start + duration;
+                    return state.clips.find(c =>
+                        c.id !== clip.id &&
+                        c.trackId === clip.trackId &&
+                        !c.offline &&
+                        ((start >= c.start && start < (c.start + c.duration)) ||
+                            (end > c.start && end <= (c.start + c.duration)) ||
+                            (start <= c.start && end >= (c.start + c.duration)))
+                    );
+                };
+
+                // --- SNAP ---
                 if (state.snapEnabled !== false) {
                     const snapThresholdSec = 10 / pxPerSec;
                     let bestSnap = null;
                     let minDelta = snapThresholdSec;
 
-                    // Pontos de snap: Início/Fim de outros clips, marcadores e agulha
                     const candidates = [];
                     if (state.markers) state.markers.forEach(m => candidates.push(typeof m === 'number' ? m : m.time));
                     if (window.globalTime !== undefined) candidates.push(window.globalTime);
@@ -500,39 +512,37 @@ function setupClipEvents(el, clip, handleL, handleR, trackEl, pxPerSec) {
                     });
 
                     candidates.forEach(point => {
-                        // Snap o início do clip
                         const dStart = Math.abs(newStart - point);
-                        if (dStart < minDelta) {
-                            minDelta = dStart;
-                            bestSnap = point;
-                        }
-                        // Snap o fim do clip
+                        if (dStart < minDelta) { minDelta = dStart; bestSnap = point; }
                         const dEnd = Math.abs((newStart + clip.duration) - point);
-                        if (dEnd < minDelta) {
-                            minDelta = dEnd;
-                            bestSnap = point - clip.duration;
-                        }
+                        if (dEnd < minDelta) { minDelta = dEnd; bestSnap = point - clip.duration; }
                     });
 
                     if (bestSnap !== null) newStart = bestSnap;
                 }
 
                 if (action === 'move') {
+                    // Colisão no Movimento
+                    if (getCollision(newStart, clip.duration)) {
+                        // Se houver colisão, tentamos parar no limite (Magnetismo de borda)
+                        const coll = getCollision(newStart, clip.duration);
+                        if (newStart < coll.start) newStart = coll.start - clip.duration;
+                        else newStart = coll.start + coll.duration;
+                    }
+
                     clip.start = newStart;
                     el.style.transform = `translateX(${(newStart * pxPerSec)}px)`;
                 } else if (action === 'trim-right') {
                     let newDuration = originalDuration + deltaSec;
                     if (newDuration < 0.1) newDuration = 0.1;
 
-                    // Snap para trim-right
-                    if (state.snapEnabled !== false) {
-                        const snapThresholdSec = 10 / pxPerSec;
-                        state.clips.forEach(c => {
-                            if (c.id !== clip.id && Math.abs((clip.start + newDuration) - c.start) < snapThresholdSec) {
-                                newDuration = c.start - clip.start;
-                            }
-                        });
-                    }
+                    // Colisão no Trim Right
+                    const end = clip.start + newDuration;
+                    const coll = state.clips.find(c =>
+                        c.id !== clip.id && c.trackId === clip.trackId && !c.offline &&
+                        end > c.start && clip.start < c.start
+                    );
+                    if (coll) newDuration = coll.start - clip.start;
 
                     clip.duration = newDuration;
                     el.style.width = `${newDuration * pxPerSec}px`;
@@ -540,16 +550,14 @@ function setupClipEvents(el, clip, handleL, handleR, trackEl, pxPerSec) {
                     let newDuration = originalDuration - deltaSec;
                     if (newDuration < 0.1) { rAF = null; return; }
 
-                    // Snap para trim-left (newStart)
-                    if (state.snapEnabled !== false) {
-                        const snapThresholdSec = 10 / pxPerSec;
-                        state.clips.forEach(c => {
-                            const cEnd = c.start + c.duration;
-                            if (c.id !== clip.id && Math.abs(newStart - cEnd) < snapThresholdSec) {
-                                newStart = cEnd;
-                                newDuration = (originalStart + originalDuration) - newStart;
-                            }
-                        });
+                    // Colisão no Trim Left
+                    const coll = state.clips.find(c =>
+                        c.id !== clip.id && c.trackId === clip.trackId && !c.offline &&
+                        newStart < (c.start + c.duration) && (originalStart + originalDuration) > (c.start + c.duration)
+                    );
+                    if (coll) {
+                        newStart = coll.start + coll.duration;
+                        newDuration = (originalStart + originalDuration) - newStart;
                     }
 
                     if (newStart < 0) newStart = 0;
@@ -577,6 +585,21 @@ function setupClipEvents(el, clip, handleL, handleR, trackEl, pxPerSec) {
 
         document.addEventListener('mousemove', onMouseMove);
         document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // MENU DE CONTEXTO (Right Click)
+    el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        state.selectedClipId = clip.id;
+        // Atualiza visualmente a seleção
+        document.querySelectorAll('.clip.selected').forEach(c => c.classList.remove('selected'));
+        el.classList.add('selected');
+
+        // Abre o painel de transformação
+        import('./transform.js?v=3').then(mod => {
+            mod.showTransformPanel(clip.id);
+        });
     });
 }
 
@@ -820,10 +843,16 @@ function selectClip(id) {
     if (state.selectedClipId === id) return;
     state.selectedClipId = id;
 
-    // Dispara re-render da timeline para mostrar o bot\u00e3o 'X' e borda
+    // Dispara re-render da timeline para mostrar o botão 'X' e borda
     const container = document.getElementById('timeline');
     if (container) {
         renderTimeline(container, state.pxPerSecond || 100);
+    }
+
+    // Abre painel de transformação para vídeo
+    const clip = state.clips.find(c => c.id === id);
+    if (clip && clip.type.includes('video')) {
+        import('../core/transform.js').then(m => m.showTransformPanel(id));
     }
 }
 

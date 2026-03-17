@@ -1,17 +1,17 @@
 // plugin-import.js
 // Sistema de importação de plugins de outras ferramentas
+// CSP-Safe: Construção via DOM API (zero innerHTML)
 
 import { showToast } from './file-operations.js';
+import { el, createSVG } from './dom-utils.js';
 
 export class PluginImporter {
     static async importPlugin(file) {
         const ext = file.name.split('.').pop().toLowerCase();
-
         showToast(`Importando plugin: ${file.name}`, 'info', 2000);
 
         try {
             let plugin;
-
             switch (ext) {
                 case 'prproj':
                 case 'xml':
@@ -33,7 +33,6 @@ export class PluginImporter {
                 default:
                     throw new Error(`Formato não suportado: .${ext}`);
             }
-
             return plugin;
         } catch (err) {
             throw err;
@@ -44,10 +43,7 @@ export class PluginImporter {
         const text = await file.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(text, 'text/xml');
-
-        if (doc.querySelector('parsererror')) {
-            throw new Error('XML inválido');
-        }
+        if (doc.querySelector('parsererror')) throw new Error('XML inválido');
 
         const effects = Array.from(doc.querySelectorAll('effect')).map(effect => ({
             name: effect.getAttribute('name') || 'Unnamed Effect',
@@ -73,15 +69,12 @@ export class PluginImporter {
     static async parseCapCutPlugin(file) {
         const text = await file.text();
         let data;
-
         try {
             data = JSON.parse(text);
         } catch {
             throw new Error('JSON inválido');
         }
-
         const effects = data.effects || data.filters || [];
-
         return {
             source: 'CapCut',
             format: 'json',
@@ -98,130 +91,89 @@ export class PluginImporter {
     }
 
     static async parseRecutPlugin(file) {
-        const text = await file.text();
-
-        return {
-            source: 'Recut',
-            format: 'recut',
-            effects: [],
-            metadata: {
-                note: 'Formato parcialmente suportado',
-                size: file.size
-            }
-        };
+        return { source: 'Recut', format: 'recut', effects: [], metadata: { note: 'Formato parcialmente suportado', size: file.size } };
     }
 
     static async parseDaVinciPlugin(file) {
-        const text = await file.text();
-
-        return {
-            source: 'DaVinci Resolve',
-            format: 'drp',
-            effects: [],
-            metadata: {
-                note: 'Formato parcialmente suportado',
-                size: file.size
-            }
-        };
+        return { source: 'DaVinci Resolve', format: 'drp', effects: [], metadata: { note: 'Formato parcialmente suportado', size: file.size } };
     }
 
     static async parseFinalCutPlugin(file) {
         const text = await file.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(text, 'text/xml');
-
         const effects = Array.from(doc.querySelectorAll('filter-video, filter-audio')).map(effect => ({
             name: effect.getAttribute('name') || 'Unnamed',
             type: effect.tagName.includes('video') ? 'video' : 'audio',
             parameters: []
         }));
-
-        return {
-            source: 'Final Cut Pro',
-            format: 'fcpxml',
-            effects,
-            metadata: {
-                effectsCount: effects.length
-            }
-        };
+        return { source: 'Final Cut Pro', format: 'fcpxml', effects, metadata: { effectsCount: effects.length } };
     }
 }
 
 export function showPluginImportDialog() {
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-        <div class="modal-content plugin-import-modal">
-            <h3>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"></path>
-                </svg>
-                Importar Plugin de Efeitos
-            </h3>
-            <p class="text-muted mb-20">
-                Suporta: Adobe Premiere, CapCut, Recut, DaVinci Resolve, Final Cut Pro
-            </p>
-            
-            <div class="form-group">
-                <label>Selecione o arquivo do plugin:</label>
-                <input type="file" id="pluginInput" name="plugin_file" class="modal-input" 
-                       accept=".prproj,.xml,.ccut,.json,.recut,.drp,.fcpxml" />
-            </div>
-            
-            <div class="plugin-formats info-box mt-16 p-12">
-                <div class="font-sm text-muted">
-                    <strong>Formatos suportados:</strong><br>
-                    • Adobe Premiere: .prproj, .xml<br>
-                    • CapCut: .ccut, .json<br>
-                    • DaVinci Resolve: .drp<br>
-                    • Final Cut Pro: .fcpxml<br>
-                    • Recut: .recut
-                </div>
-            </div>
-            
-            <div class="modal-actions">
-                <button class="btn-secondary modal-cancel">Cancelar</button>
-                <button class="btn-primary modal-import">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"></path>
-                    </svg>
-                    Importar
-                </button>
-            </div>
-        </div>
-    `;
+    const modal = el('div', { className: 'modal-overlay' });
+    const content = el('div', { className: 'modal-content plugin-import-modal' }, [
+        el('h3', {}, [
+            createSVG('0 0 24 24', ['M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24'], { width: 24, height: 24, fill: 'none', stroke: 'currentColor', strokeWidth: 2 }),
+            el('span', { textContent: ' Importar Plugin de Efeitos' })
+        ]),
+        // Add circle to header icon manually as path d doesn't support circles easily in my helper
+        el('p', { className: 'text-muted mb-20', textContent: 'Suporta: Adobe Premiere, CapCut, Recut, DaVinci Resolve, Final Cut Pro' }),
 
+        el('div', { className: 'form-group' }, [
+            el('label', { textContent: 'Selecione o arquivo do plugin:' }),
+            el('input', { type: 'file', id: 'pluginInput', className: 'modal-input', accept: '.prproj,.xml,.ccut,.json,.recut,.drp,.fcpxml' })
+        ]),
+
+        el('div', { className: 'plugin-formats info-box mt-16 p-12' }, [
+            el('div', { className: 'font-sm text-muted' }, [
+                el('strong', { textContent: 'Formatos suportados:' }),
+                el('br'),
+                el('span', { textContent: '• Adobe Premiere: .prproj, .xml' }), el('br'),
+                el('span', { textContent: '• CapCut: .ccut, .json' }), el('br'),
+                el('span', { textContent: '• DaVinci Resolve: .drp' }), el('br'),
+                el('span', { textContent: '• Final Cut Pro: .fcpxml' }), el('br'),
+                el('span', { textContent: '• Recut: .recut' })
+            ])
+        ]),
+
+        el('div', { className: 'modal-actions' }, [
+            el('button', { className: 'btn-secondary modal-cancel', textContent: 'Cancelar', onClick: () => modal.remove() }),
+            el('button', {
+                className: 'btn-primary modal-import', onClick: async () => {
+                    const file = modal.querySelector('#pluginInput').files[0];
+                    if (!file) {
+                        showToast('Selecione um arquivo', 'warning', 2000);
+                        return;
+                    }
+                    try {
+                        const plugin = await PluginImporter.importPlugin(file);
+                        const plugins = JSON.parse(localStorage.getItem('imported_plugins') || '[]');
+                        plugins.push({ ...plugin, importedAt: Date.now(), fileName: file.name });
+                        localStorage.setItem('imported_plugins', JSON.stringify(plugins));
+                        showToast(`Plugin importado: ${plugin.source} (${plugin.effects.length} efeitos)`, 'success', 3000);
+                        modal.remove();
+                    } catch (err) {
+                        showToast(`Erro: ${err.message}`, 'error', 3000);
+                    }
+                }
+            }, [
+                createSVG('0 0 24 24', ['M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12'], { width: 16, height: 16, fill: 'none', stroke: 'currentColor', strokeWidth: 2 }),
+                el('span', { textContent: ' Importar' })
+            ])
+        ])
+    ]);
+
+    // Fix header icon
+    const headerSvg = content.querySelector('h3 svg');
+    const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', '12'); c.setAttribute('cy', '12'); c.setAttribute('r', '3');
+    headerSvg.insertBefore(c, headerSvg.firstChild);
+
+    modal.appendChild(content);
     document.body.appendChild(modal);
 
-    modal.querySelector('.modal-import').addEventListener('click', async () => {
-        const file = modal.querySelector('#pluginInput').files[0];
-        if (!file) {
-            showToast('Selecione um arquivo', 'warning', 2000);
-            return;
-        }
-
-        try {
-            const plugin = await PluginImporter.importPlugin(file);
-
-            // Store in localStorage
-            const plugins = JSON.parse(localStorage.getItem('imported_plugins') || '[]');
-            plugins.push({
-                ...plugin,
-                importedAt: Date.now(),
-                fileName: file.name
-            });
-            localStorage.setItem('imported_plugins', JSON.stringify(plugins));
-
-            showToast(`Plugin importado: ${plugin.source} (${plugin.effects.length} efeitos)`, 'success', 3000);
-            modal.remove();
-
-        } catch (err) {
-            showToast(`Erro: ${err.message}`, 'error', 3000);
-        }
-    });
-
-    modal.querySelector('.modal-cancel').addEventListener('click', () => modal.remove());
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
     });
